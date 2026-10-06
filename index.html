@@ -27,6 +27,18 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
 .overlay-panel.min { width: auto; min-width: 190px; padding: 10px 12px; }
 .overlay-panel.min .header { border-bottom: none; padding-bottom: 0; margin-bottom: 0; gap: 14px; }
 .overlay-panel.min .panel-body { display: none; }
+.id-row { display: flex; gap: 6px; }
+.id-row input { flex: 1; min-width: 0; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 8px; padding: 7px 10px; font-size: 14px; outline: none; }
+.id-row input:focus { border-color: #4caf50; }
+.id-row input::placeholder { color: #8a8da3; }
+.id-row button { background: #2e7d32; border: none; color: #fff; border-radius: 8px; padding: 0 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.id-row button:hover { background: #388e3c; }
+.id-row button.alt { background: rgba(255,255,255,0.15); }
+.id-row button.alt:hover { background: rgba(255,255,255,0.28); }
+.id-hint { font-size: 10px; color: #8a8da3; margin: 4px 0 0 2px; }
+.id-msg { font-size: 11px; min-height: 16px; margin: 6px 0 8px 2px; color: #b0b3c6; }
+.id-msg.ok { color: #81c784; }
+.id-msg.err { color: #ef9a9a; }
 .conn { font-size: 11px; margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.15); color: #b0b3c6; display: flex; justify-content: space-between; }
 </style></head><body>
 <div id='map'></div>
@@ -39,6 +51,13 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
     </div>
   </div>
   <div class='panel-body'>
+  <div class='id-row'>
+    <input id='id-input' type='text' placeholder='ID da coleira' autocomplete='off' autocapitalize='off' autocorrect='off' spellcheck='false'>
+    <button id='id-view' class='alt' title='Apenas ver essa coleira (não grava nada)'>Ver</button>
+    <button id='id-save' title='Grava este ID na coleira que está sendo exibida (Enter)'>Gravar</button>
+  </div>
+  <div class='id-hint'>Enter = grava o ID na coleira exibida</div>
+  <div id='id-msg' class='id-msg'></div>
   <div class='info-row'><span>Bateria:</span><span id='bat-val' class='val'>--%</span></div>
   <div class='bat-bar'><div id='bat-fill' class='bat-fill' style='width: 0%;'></div></div>
   <div class='info-row' style='margin-top: 10px;'><span>Satélites:</span><span id='sat-val' class='val'>0</span></div>
@@ -57,10 +76,9 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
 // ================= CONFIGURAÇÃO (use o MESMO prefixo do .ino) =================
 var BROKER_URL   = 'wss://broker.emqx.io:8084/mqtt';
 var TOPIC_PREFIX = 'wellbullbpa6tfor';
-var DEVICE_ID    = 'WellBull';
-var TOPIC_DATA   = TOPIC_PREFIX + '/' + DEVICE_ID + '/data';
-var TOPIC_STATUS = TOPIC_PREFIX + '/' + DEVICE_ID + '/status';
-var STALE_MS     = 15000;   // sem mensagem por 15s => considera offline
+var DEFAULT_ID   = 'WellBull';   // ID usado na primeira vez que abrir a página
+var STALE_MS     = 15000;        // sem mensagem por 15s => considera offline
+var ACK_TIMEOUT  = 10000;        // espera 10s a resposta da coleira ao gravar ID
 // ==============================================================================
 
 var map = L.map('map').setView([-10.9333, -37.1296], 17);
@@ -87,6 +105,37 @@ function $(id) { return document.getElementById(id); }
   btn.addEventListener('click', function () { setMin(!panel.classList.contains('min')); });
   try { if (localStorage.getItem('wellbull_min') === '1') setMin(true); } catch (e) {}
 })();
+
+// ---- ID da coleira / tópicos ----
+function limparId(v) { return (v || '').trim().replace(/[^A-Za-z0-9_-]/g, ''); }
+
+var DEVICE_ID = DEFAULT_ID, TOPIC_DATA = '', TOPIC_STATUS = '', TOPIC_CMD = '', TOPIC_ACK = '';
+function setTopics() {
+  var base = TOPIC_PREFIX + '/' + DEVICE_ID;
+  TOPIC_DATA = base + '/data'; TOPIC_STATUS = base + '/status';
+  TOPIC_CMD = base + '/cmd';   TOPIC_ACK = base + '/ack';
+}
+function listenTopics() { return [TOPIC_DATA, TOPIC_STATUS, TOPIC_ACK]; }
+
+(function () {
+  // prioridade: ?id=XXX no link > último ID salvo > padrão
+  var fromUrl = limparId(new URLSearchParams(location.search).get('id'));
+  var saved = '';
+  try { saved = limparId(localStorage.getItem('wellbull_id')); } catch (e) {}
+  DEVICE_ID = fromUrl || saved || DEFAULT_ID;
+  setTopics();
+  $('id-input').value = DEVICE_ID;
+})();
+
+// ---- mensagens no cartão ----
+var msgTimer = null;
+function msg(text, kind) {
+  var el = $('id-msg');
+  el.innerText = text;
+  el.className = 'id-msg' + (kind ? ' ' + kind : '');
+  clearTimeout(msgTimer);
+  if (text) msgTimer = setTimeout(function () { el.innerText = ''; el.className = 'id-msg'; }, 8000);
+}
 
 function fmtUptime(s) {
   var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
@@ -159,22 +208,113 @@ var client = mqtt.connect(BROKER_URL, {
 
 client.on('connect', function () {
   $('mqtt-val').innerText = 'conectado';
-  client.subscribe([TOPIC_DATA, TOPIC_STATUS]);
+  client.subscribe(listenTopics());
 });
 client.on('reconnect', function () { $('mqtt-val').innerText = 'reconectando...'; });
 client.on('close', function () { $('mqtt-val').innerText = 'desconectado'; });
 client.on('error', function (e) { console.log('MQTT erro:', e); });
 
+// ---- gravar ID na coleira (comando MQTT) ----
+var pending = null;   // { novo, timer }
+
+function getKey() {
+  var k = '';
+  try { k = localStorage.getItem('wellbull_key') || ''; } catch (e) {}
+  if (!k) {
+    k = prompt('Senha de gravação (a mesma CHAVE_CMD do .ino):') || '';
+    if (k) { try { localStorage.setItem('wellbull_key', k); } catch (e) {} }
+  }
+  return k;
+}
+function forgetKey() { try { localStorage.removeItem('wellbull_key'); } catch (e) {} }
+
+function gravarId(raw) {
+  var novo = limparId(raw);
+  if (!novo) { msg('ID inválido (use letras, números, - e _).', 'err'); return; }
+  if (novo === DEVICE_ID) { msg('A coleira já usa esse ID.', ''); return; }
+  if (!client.connected) { msg('Sem conexão com o servidor MQTT.', 'err'); return; }
+  if (pending) { msg('Aguarde a resposta da coleira...', ''); return; }
+  if (!confirm("Gravar o ID '" + novo + "' na coleira '" + DEVICE_ID + "'?")) {
+    $('id-input').value = DEVICE_ID; return;
+  }
+  var key = getKey();
+  if (!key) { $('id-input').value = DEVICE_ID; return; }
+
+  client.publish(TOPIC_CMD, novo + '|' + key, { qos: 0, retain: false });
+  msg('Enviando para a coleira...', '');
+  pending = {
+    novo: novo,
+    timer: setTimeout(function () {
+      pending = null;
+      $('id-input').value = DEVICE_ID;
+      msg('Sem resposta. A coleira está online?', 'err');
+    }, ACK_TIMEOUT)
+  };
+  $('id-input').blur();
+}
+
+function onAck(text) {
+  if (!pending) return;
+  if (text.indexOf('ok:') === 0) {
+    clearTimeout(pending.timer);
+    var novo = pending.novo;
+    pending = null;
+    verColeira(novo);
+    msg("ID gravado na coleira: '" + novo + "'. Aguardando ela reconectar...", 'ok');
+  } else if (text === 'erro:senha') {
+    clearTimeout(pending.timer); pending = null; forgetKey();
+    $('id-input').value = DEVICE_ID;
+    msg('Senha incorreta. Tente de novo.', 'err');
+  } else if (text.indexOf('erro:') === 0) {
+    clearTimeout(pending.timer); pending = null;
+    $('id-input').value = DEVICE_ID;
+    msg('A coleira recusou: ' + text.slice(5), 'err');
+  }
+}
+
+// ---- apenas visualizar outra coleira ----
+function resetUI() {
+  lastMsgMs = 0; deviceOnline = false; lastFix = false;
+  ['bat-val','up-val','rst-val','rssi-val','lat-val','lon-val','last-val'].forEach(function (i) { $(i).innerText = '--'; });
+  $('sat-val').innerText = '0';
+  $('speed-val').innerText = '0 km/h';
+  $('alt-val').innerText = '0 m';
+  $('bat-fill').style.width = '0%';
+  if (marker) { map.removeLayer(marker); marker = null; }
+  refreshBadge();
+}
+
+function verColeira(raw) {
+  var novo = limparId(raw);
+  $('id-input').value = novo || DEVICE_ID;
+  if (!novo || novo === DEVICE_ID) return;
+  if (client.connected) client.unsubscribe(listenTopics());
+  DEVICE_ID = novo;
+  setTopics();
+  try { localStorage.setItem('wellbull_id', DEVICE_ID); } catch (e) {}
+  resetUI();
+  if (client.connected) client.subscribe(listenTopics());
+  $('id-input').blur();
+}
+
 client.on('message', function (topic, payload) {
-  var msg = payload.toString();
+  var m = payload.toString();
   if (topic === TOPIC_STATUS) {
-    deviceOnline = (msg === 'online');
+    deviceOnline = (m === 'online');
     if (deviceOnline && !lastMsgMs) lastMsgMs = Date.now();
     refreshBadge();
   } else if (topic === TOPIC_DATA) {
-    try { onData(JSON.parse(msg)); } catch (e) { console.log('JSON inválido', e); }
+    try { onData(JSON.parse(m)); } catch (e) { console.log('JSON inválido', e); }
+  } else if (topic === TOPIC_ACK) {
+    onAck(m);
   }
 });
+
+$('id-input').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') gravarId(this.value);
+});
+$('id-save').addEventListener('click', function () { gravarId($('id-input').value); });
+$('id-view').addEventListener('click', function () { verColeira($('id-input').value); });
 
 setInterval(refreshBadge, 1000);
 </script>

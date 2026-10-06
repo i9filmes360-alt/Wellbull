@@ -1,30 +1,33 @@
-
 <!DOCTYPE html><html><head><meta charset='UTF-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'>
 <title>WellBull</title>
 <link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'>
 <script src='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'></script>
+<script src='https://cdn.jsdelivr.net/npm/mqtt@5.3.4/dist/mqtt.min.js'></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; }
 #map { width: 100%; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; background: #111; }
 .bull { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.95); border: 3px solid #2e7d32; display: flex; align-items: center; justify-content: center; font-size: 24px; line-height: 1; box-shadow: 0 3px 10px rgba(0,0,0,0.6); }
 .bull.lost { border-color: #c62828; opacity: 0.8; }
+.bull.offline { border-color: #757575; opacity: 0.5; }
 .overlay-panel { position: absolute; top: 15px; right: 15px; z-index: 1000; background: rgba(30, 30, 45, 0.92); color: #fff; padding: 16px; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 280px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
 .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 8px; margin-bottom: 10px; font-weight: bold; font-size: 15px; }
 .badge { padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
 .status-ok { background: #2e7d32; color: #e8f5e9; }
 .status-wait { background: #c62828; color: #ffebee; }
+.status-off { background: #616161; color: #eeeeee; }
 .info-row { display: flex; justify-content: space-between; font-size: 13px; color: #b0b3c6; margin: 6px 0; }
 .val { color: #fff; font-weight: 600; }
 .bat-bar { background: rgba(255,255,255,0.1); height: 6px; border-radius: 3px; overflow: hidden; margin-top: 3px; }
 .bat-fill { height: 100%; background: #4caf50; transition: width 0.4s; }
+.conn { font-size: 11px; margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.15); color: #b0b3c6; display: flex; justify-content: space-between; }
 </style></head><body>
 <div id='map'></div>
 <div class='overlay-panel'>
   <div class='header'>
     <span>🐂 WellBull</span>
-    <span id='status-badge' class='badge status-wait'>Buscando</span>
+    <span id='status-badge' class='badge status-off'>Conectando...</span>
   </div>
   <div class='info-row'><span>Bateria:</span><span id='bat-val' class='val'>--%</span></div>
   <div class='bat-bar'><div id='bat-fill' class='bat-fill' style='width: 0%;'></div></div>
@@ -36,54 +39,118 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
   <div class='info-row'><span>Ligado há:</span><span id='up-val' class='val'>--</span></div>
   <div class='info-row'><span>Último reinício:</span><span id='rst-val' class='val'>--</span></div>
   <div class='info-row'><span>Wi-Fi:</span><span id='rssi-val' class='val'>--</span></div>
+  <div class='conn'><span>Servidor MQTT:</span><span id='mqtt-val'>desconectado</span></div>
+  <div class='conn' style='border:none;margin-top:0;padding-top:0'><span>Última atualização:</span><span id='last-val'>--</span></div>
 </div>
 <script>
+// ================= CONFIGURAÇÃO (use o MESMO prefixo do .ino) =================
+var BROKER_URL   = 'wss://broker.emqx.io:8084/mqtt';
+var TOPIC_PREFIX = 'wellbullbpa6tfor';
+var DEVICE_ID    = 'WellBull';
+var TOPIC_DATA   = TOPIC_PREFIX + '/' + DEVICE_ID + '/data';
+var TOPIC_STATUS = TOPIC_PREFIX + '/' + DEVICE_ID + '/status';
+var STALE_MS     = 15000;   // sem mensagem por 15s => considera offline
+// ==============================================================================
+
 var map = L.map('map').setView([-10.9333, -37.1296], 17);
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
   { maxZoom: 19, attribution: 'Tiles &copy; Esri' }).addTo(map);
 var bullIcon = L.divIcon({ className: '', html: "<div id='bull' class='bull'>🐂</div>", iconSize: [40, 40], iconAnchor: [20, 20] });
 var marker = null;
-function updateTracker() {
-  fetch('/data').then(res => res.json()).then(data => {
-    document.getElementById('bat-val').innerText = data.battPercent + '% (' + data.battVolts + 'V)';
-    var batFill = document.getElementById('bat-fill');
-    batFill.style.width = data.battPercent + '%';
-    batFill.style.background = (data.battPercent > 20) ? '#4caf50' : '#f44336';
+var lastMsgMs = 0;
+var deviceOnline = false;
+var lastFix = false;
 
-    document.getElementById('up-val').innerText = data.uptime + ' s';
-    document.getElementById('rst-val').innerText = data.reset;
-    document.getElementById('rssi-val').innerText = data.rssi + ' dBm';
-    document.getElementById('sat-val').innerText = data.satelites;
-    document.getElementById('speed-val').innerText = data.speed + ' km/h';
-    document.getElementById('alt-val').innerText = data.alt + ' m';
+function $(id) { return document.getElementById(id); }
 
-    var badge = document.getElementById('status-badge');
-    if (data.gpsFix) {
-      badge.innerText = 'GPS OK';
-      badge.className = 'badge status-ok';
-    } else {
-      badge.innerText = 'Buscando';
-      badge.className = 'badge status-wait';
-    }
-
-    // Mostra a última posição conhecida mesmo se o fix cair momentaneamente
-    if (data.lat !== 0 || data.lon !== 0) {
-      document.getElementById('lat-val').innerText = data.lat.toFixed(6);
-      document.getElementById('lon-val').innerText = data.lon.toFixed(6);
-      var ll = [data.lat, data.lon];
-      if (!marker) {
-        marker = L.marker(ll, { icon: bullIcon }).addTo(map);
-        map.setView(ll, 17);
-      } else {
-        marker.setLatLng(ll);
-        map.panTo(ll);
-      }
-      var b = document.getElementById('bull');
-      if (b) b.className = data.gpsFix ? 'bull' : 'bull lost';
-    }
-  }).catch(err => console.log('Erro AJAX:', err));
+function fmtUptime(s) {
+  var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  if (h > 0) return h + 'h ' + m + 'min';
+  if (m > 0) return m + 'min ' + sec + 's';
+  return sec + ' s';
 }
-setInterval(updateTracker, 2000);
-updateTracker();
+
+function refreshBadge() {
+  var badge = $('status-badge');
+  var b = $('bull');
+  var alive = deviceOnline && (Date.now() - lastMsgMs < STALE_MS);
+  if (!alive) {
+    badge.innerText = 'Offline';
+    badge.className = 'badge status-off';
+    if (b) b.className = 'bull offline';
+  } else if (lastFix) {
+    badge.innerText = 'GPS OK';
+    badge.className = 'badge status-ok';
+    if (b) b.className = 'bull';
+  } else {
+    badge.innerText = 'Buscando';
+    badge.className = 'badge status-wait';
+    if (b) b.className = 'bull lost';
+  }
+  if (lastMsgMs) {
+    var ago = Math.round((Date.now() - lastMsgMs) / 1000);
+    $('last-val').innerText = 'há ' + ago + ' s';
+  }
+}
+
+function onData(data) {
+  lastMsgMs = Date.now();
+  deviceOnline = true;
+  lastFix = data.gpsFix;
+
+  $('bat-val').innerText = data.battPercent + '% (' + data.battVolts + 'V)';
+  var batFill = $('bat-fill');
+  batFill.style.width = data.battPercent + '%';
+  batFill.style.background = (data.battPercent > 20) ? '#4caf50' : '#f44336';
+
+  $('up-val').innerText = fmtUptime(data.uptime);
+  $('rst-val').innerText = data.reset;
+  $('rssi-val').innerText = (data.wifi ? data.wifi + ' · ' : '') + data.rssi + ' dBm';
+  $('sat-val').innerText = data.satelites;
+  $('speed-val').innerText = data.speed + ' km/h';
+  $('alt-val').innerText = data.alt + ' m';
+
+  if (data.lat !== 0 || data.lon !== 0) {
+    $('lat-val').innerText = data.lat.toFixed(6);
+    $('lon-val').innerText = data.lon.toFixed(6);
+    var ll = [data.lat, data.lon];
+    if (!marker) {
+      marker = L.marker(ll, { icon: bullIcon }).addTo(map);
+      map.setView(ll, 17);
+    } else {
+      marker.setLatLng(ll);
+      map.panTo(ll);
+    }
+  }
+  refreshBadge();
+}
+
+var client = mqtt.connect(BROKER_URL, {
+  clientId: 'wellbull_web_' + Math.random().toString(16).slice(2, 10),
+  clean: true,
+  reconnectPeriod: 3000,
+  connectTimeout: 10000
+});
+
+client.on('connect', function () {
+  $('mqtt-val').innerText = 'conectado';
+  client.subscribe([TOPIC_DATA, TOPIC_STATUS]);
+});
+client.on('reconnect', function () { $('mqtt-val').innerText = 'reconectando...'; });
+client.on('close', function () { $('mqtt-val').innerText = 'desconectado'; });
+client.on('error', function (e) { console.log('MQTT erro:', e); });
+
+client.on('message', function (topic, payload) {
+  var msg = payload.toString();
+  if (topic === TOPIC_STATUS) {
+    deviceOnline = (msg === 'online');
+    if (deviceOnline && !lastMsgMs) lastMsgMs = Date.now();
+    refreshBadge();
+  } else if (topic === TOPIC_DATA) {
+    try { onData(JSON.parse(msg)); } catch (e) { console.log('JSON inválido', e); }
+  }
+});
+
+setInterval(refreshBadge, 1000);
 </script>
 </body></html>

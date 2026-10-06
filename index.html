@@ -65,7 +65,7 @@ var STALE_MS     = 15000;   // sem mensagem por 15s => considera offline
 
 var map = L.map('map').setView([-10.9333, -37.1296], 17);
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-  { maxZoom: 19, attribution: 'Tiles &copy; Esri' }).addTo(map);
+  { maxZoom: 21, maxNativeZoom: 17, attribution: 'Tiles &copy; Esri' }).addTo(map);
 var bullIcon = L.divIcon({ className: '', html: "<div id='bull' class='bull'>🐂</div>", iconSize: [40, 40], iconAnchor: [20, 20] });
 var marker = null;
 var lastMsgMs = 0;

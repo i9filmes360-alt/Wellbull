@@ -97,6 +97,9 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
 .modal input[type=text]:focus { border-color: #4caf50; }
 #m-cows { max-height: 170px; overflow-y: auto; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 4px 10px; }
 .m-actions { display: flex; gap: 8px; margin-top: 16px; align-items: center; }
+.alarm.warn { background: #e65100; animation: none; }
+.small-select { background: rgba(255,255,255,0.15); color: #fff; border: none; border-radius: 8px; padding: 3px 6px; font-size: 11px; font-weight: 600; cursor: pointer; }
+.small-select option { color: #000; }
 </style></head><body>
 <div id='map'></div>
 <div class='overlay-panel' id='panel'>
@@ -128,6 +131,15 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
     <div id='fence-list'></div>
     <label class='chk' style='font-size:12px;color:#b0b3c6;margin:-4px 0 12px 2px'><input type='checkbox' id='snd' checked> Som do alarme</label>
 
+    <div class='list-head'>
+      <span>Trajeto</span>
+      <span style='display:flex;gap:6px;align-items:center'>
+        <label><input type='checkbox' id='trk-on' checked> Mostrar</label>
+        <select id='trk-h' class='small-select'><option value='1'>1 h</option><option value='6'>6 h</option><option value='24'>24 h</option></select>
+        <button id='trk-clear' class='small-btn' title='Apaga o trajeto gravado neste navegador'>Limpar</button>
+      </span>
+    </div>
+
     <div class='sel-head'>
       <div class='sel-name'><span id='sel-name'>--</span></div>
       <span id='status-badge' class='badge status-off'>--</span>
@@ -145,6 +157,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
     <div class='info-row' style='margin-top: 10px;'><span>Satélites:</span><span id='sat-val' class='val'>0</span></div>
     <div class='info-row'><span>Velocidade:</span><span id='speed-val' class='val'>0 km/h</span></div>
     <div class='info-row'><span>Altitude:</span><span id='alt-val' class='val'>0 m</span></div>
+    <div class='info-row'><span>Percorrido:</span><span id='dist-val' class='val'>--</span></div>
     <div class='info-row'><span>Lat:</span><span id='lat-val' class='val'>--</span></div>
     <div class='info-row'><span>Lon:</span><span id='lon-val' class='val'>--</span></div>
     <div class='info-row'><span>Ligado há:</span><span id='up-val' class='val'>--</span></div>
@@ -188,6 +201,8 @@ var BROKER_URL   = 'wss://broker.emqx.io:8084/mqtt';
 var TOPIC_PREFIX = 'wellbullbpa6tfor';
 var STALE_MS     = 15000;   // sem dados por 15s => coleira considerada offline
 var LOW_BATT     = 20;      // % abaixo do qual mostra alerta de bateria baixa
+var ASK_LOGIN    = false;   // true = pede usuário/senha do broker (use ao migrar para um broker pago)
+var OFFLINE_ALERT_MS = 60000;   // avisa se a coleira ficar offline por mais de 60 s
 var ACK_TIMEOUT  = 10000;   // espera 10s a resposta da coleira ao gravar ID
 // ==============================================================================
 
@@ -297,6 +312,7 @@ function renderList() {
 }
 
 function renderDetail() {
+  renderDist();
   var dev = devices[selectedId];
   $('sel-name').innerText = selectedId ? nameOf(selectedId) + (nameOf(selectedId) !== selectedId ? '  (' + selectedId + ')' : '') : '--';
   if (!inputDirty && document.activeElement !== $('id-input')) $('id-input').value = selectedId ? nameOf(selectedId) : '';
@@ -353,12 +369,22 @@ function msg(text, kind) {
 }
 
 // ---------------- MQTT ----------------
-var client = mqtt.connect(BROKER_URL, {
+var mqttOpts = {
   clientId: 'wellbull_web_' + Math.random().toString(16).slice(2, 10),
   clean: true,
   reconnectPeriod: 3000,
   connectTimeout: 10000
-});
+};
+if (ASK_LOGIN) {   // usuário/senha ficam só neste navegador (não ficam no código público)
+  var mu = lsGet('wellbull_mu', ''), mp = lsGet('wellbull_mp', '');
+  if (!mu) {
+    mu = prompt('Usuário do servidor MQTT:') || '';
+    mp = prompt('Senha do servidor MQTT:') || '';
+    lsSet('wellbull_mu', mu); lsSet('wellbull_mp', mp);
+  }
+  mqttOpts.username = mu; mqttOpts.password = mp;
+}
+var client = mqtt.connect(BROKER_URL, mqttOpts);
 
 client.on('connect', function () {
   $('mqtt-val').innerText = 'conectado';
@@ -366,7 +392,13 @@ client.on('connect', function () {
 });
 client.on('reconnect', function () { $('mqtt-val').innerText = 'reconectando...'; });
 client.on('close', function () { $('mqtt-val').innerText = 'desconectado'; });
-client.on('error', function (e) { console.log('MQTT erro:', e); });
+client.on('error', function (e) {
+  console.log('MQTT erro:', e);
+  if (ASK_LOGIN && /auth|password|credential/i.test(String(e && e.message))) {
+    lsSet('wellbull_mu', ''); lsSet('wellbull_mp', '');
+    toast('Login do MQTT recusado. Recarregue a página para digitar de novo.');
+  }
+});
 
 function removeDev(id) {
   var dv = devices[id];
@@ -374,6 +406,8 @@ function removeDev(id) {
   if (dv.marker) map.removeLayer(dv.marker);
   delete devices[id];
   delete alarms[id]; renderAlarms();
+  delete tracks[id]; if (trackLayers[id]) { map.removeLayer(trackLayers[id]); delete trackLayers[id]; }
+  clearAlert('bat', id); clearAlert('off', id);
   if (selectedId === id) {
     var rest = Object.keys(devices).sort();
     if (rest.length) { selectDev(rest[0], false); return; }
@@ -400,6 +434,8 @@ client.on('message', function (topic, payload) {
     try { dev.d = JSON.parse(m); } catch (e) { return; }
     dev.lastMs = Date.now();
     evalFence(dev);
+    dev.msgs = (dev.msgs || 0) + 1;
+    addTrackPoint(dev);
   } else { return; }
 
   updateMarker(dev);
@@ -608,6 +644,7 @@ function clearAlarm(id, voltou) {
   if (voltou) toast('✅ ' + nameOf(id) + ' voltou ao cercado ' + a.names);
 }
 
+var alerts = {};   // 'bat:id' | 'off:id' -> { id, type, since, hidden }
 var lastAlarmHtml = '';
 function renderAlarms() {
   var ids = Object.keys(alarms);
@@ -618,15 +655,56 @@ function renderAlarms() {
            "<div class='a-btn'><button data-act='ver' data-id='" + esc(id) + "'>Ver</button>" +
            (a.muted ? '' : "<button data-act='mute' data-id='" + esc(id) + "'>Silenciar</button>") + "</div></div>";
   }).join('');
+  var warn = Object.keys(alerts).filter(function (k) { return !alerts[k].hidden; });
+  html += warn.map(function (k) {
+    var al = alerts[k], dv = devices[al.id], txt;
+    if (al.type === 'bat') txt = "🪫 <b>" + esc(nameOf(al.id)) + "</b> com bateria baixa (" + (dv && dv.d ? dv.d.battPercent : '?') + "%)";
+    else txt = "📡 <b>" + esc(nameOf(al.id)) + "</b> está offline";
+    return "<div class='alarm warn'><div>" + txt + "<small>desde " + new Date(al.since).toLocaleTimeString() + "</small></div>" +
+           "<div class='a-btn'><button data-act='ver' data-id='" + esc(al.id) + "'>Ver</button>" +
+           "<button data-act='dismiss' data-key='" + esc(k) + "'>Dispensar</button></div></div>";
+  }).join('');
   if (html !== lastAlarmHtml) { $('alarm-box').innerHTML = html; lastAlarmHtml = html; }
-  document.title = ids.length ? '🚨 ALARME - WellBull' : 'WellBull';
+  document.title = ids.length ? '🚨 ALARME - WellBull' : (warn.length ? '⚠ WellBull' : 'WellBull');
 }
 $('alarm-box').addEventListener('click', function (e) {
   var b = e.target.closest('button'); if (!b) return;
-  var id = b.getAttribute('data-id');
-  if (b.getAttribute('data-act') === 'ver') selectDev(id, true);
-  else if (alarms[id]) { alarms[id].muted = true; renderAlarms(); }
+  var act = b.getAttribute('data-act'), id = b.getAttribute('data-id');
+  if (act === 'ver') selectDev(id, true);
+  else if (act === 'mute' && alarms[id]) { alarms[id].muted = true; renderAlarms(); }
+  else if (act === 'dismiss') { var k = b.getAttribute('data-key'); if (alerts[k]) { alerts[k].hidden = true; renderAlarms(); } }
 });
+
+// ---- alertas: coleira offline / bateria baixa ----
+function raiseAlert(type, id) {
+  var k = type + ':' + id;
+  if (alerts[k]) return;
+  alerts[k] = { id: id, type: type, since: Date.now(), hidden: false };
+  renderAlarms(); playAlarm();
+}
+function clearAlert(type, id, msgText) {
+  var k = type + ':' + id;
+  if (!alerts[k]) return;
+  delete alerts[k];
+  renderAlarms();
+  if (msgText) toast(msgText);
+}
+function evalAlerts() {
+  Object.keys(devices).forEach(function (id) {
+    var dv = devices[id], alive = isAlive(dv);
+    if (alive && (dv.msgs || 0) >= 2) {            // só confia que estava viva após receber dados ao vivo
+      dv.wasAlive = true; dv.offSince = 0;
+      clearAlert('off', id, '📡 ' + nameOf(id) + ' voltou a ficar online');
+    } else if (dv.wasAlive && !alive) {
+      if (!dv.offSince) dv.offSince = Date.now();
+      if (Date.now() - dv.offSince >= OFFLINE_ALERT_MS) raiseAlert('off', id);
+    }
+    if (alive && dv.d && isFinite(dv.d.battPercent)) {
+      if (dv.d.battPercent <= LOW_BATT) raiseAlert('bat', id);
+      else if (dv.d.battPercent > LOW_BATT + 5) clearAlert('bat', id);
+    }
+  });
+}
 
 function toast(t) {
   var el = $('toast');
@@ -831,9 +909,74 @@ $('fence-list').addEventListener('click', function (e) {
   else if (fenceLayers[fid]) map.fitBounds(fenceLayers[fid].getBounds(), { padding: [50, 50], maxZoom: 18 });
 });
 
+// ======================= TRAJETO =======================
+var TRACK_MAX_AGE_MS = 24 * 3600 * 1000;   // guarda até 24 h
+var TRACK_MIN_STEP_M = 5;                  // só grava ponto novo se andou mais de 5 m (evita "ruído" do GPS parado)
+var TRACK_MAX_PTS = 1500;
+var tracks = {};        // id -> [[timestamp, lat, lon], ...]
+var trackLayers = {};
+var trackDirty = false;
+try { tracks = JSON.parse(lsGet('wellbull_tracks', '{}')) || {}; } catch (e) { tracks = {}; }
+$('trk-on').checked = (lsGet('wellbull_trk', '1') === '1');
+$('trk-h').value = lsGet('wellbull_trkh', '6');
+
+function distM(lat1, lon1, lat2, lon2) {
+  var k = Math.cos(lat1 * Math.PI / 180) * 111320;
+  var dx = (lon2 - lon1) * k, dy = (lat2 - lat1) * 110540;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+function trackColor(id) {
+  var s = 0; for (var i = 0; i < id.length; i++) s = (s * 31 + id.charCodeAt(i)) >>> 0;
+  return COLORS[s % COLORS.length];
+}
+function trackPts(id) {
+  var from = Date.now() - (+$('trk-h').value) * 3600000;
+  return (tracks[id] || []).filter(function (p) { return p[0] >= from; });
+}
+function addTrackPoint(dev) {
+  if (!dev.d || !dev.d.gpsFix || !hasPos(dev)) return;
+  var a = tracks[dev.id] || (tracks[dev.id] = []);
+  var last = a[a.length - 1];
+  if (last && distM(last[1], last[2], dev.d.lat, dev.d.lon) < TRACK_MIN_STEP_M) return;
+  a.push([Date.now(), +dev.d.lat.toFixed(6), +dev.d.lon.toFixed(6)]);
+  var cutoff = Date.now() - TRACK_MAX_AGE_MS;
+  while (a.length && (a[0][0] < cutoff || a.length > TRACK_MAX_PTS)) a.shift();
+  trackDirty = true;
+  drawTrack(dev.id);
+}
+function drawTrack(id) {
+  var pts = trackPts(id).map(function (p) { return [p[1], p[2]]; });
+  if (!$('trk-on').checked || pts.length < 2) {
+    if (trackLayers[id]) { map.removeLayer(trackLayers[id]); delete trackLayers[id]; }
+    return;
+  }
+  if (!trackLayers[id]) trackLayers[id] = L.polyline(pts, { color: trackColor(id), weight: 3, opacity: 0.85, interactive: false }).addTo(map);
+  else trackLayers[id].setLatLngs(pts);
+}
+function renderTracks() { Object.keys(tracks).forEach(drawTrack); }
+function renderDist() {
+  var el = $('dist-val');
+  if (!selectedId) { el.innerText = '--'; return; }
+  var p = trackPts(selectedId), m = 0;
+  for (var i = 1; i < p.length; i++) m += distM(p[i - 1][1], p[i - 1][2], p[i][1], p[i][2]);
+  el.innerText = (m >= 1000 ? (m / 1000).toFixed(2) + ' km' : Math.round(m) + ' m') + ' (' + $('trk-h').value + ' h)';
+}
+function saveTracks() {
+  if (!trackDirty) return;
+  try { localStorage.setItem('wellbull_tracks', JSON.stringify(tracks)); trackDirty = false; } catch (e) {}
+}
+$('trk-on').addEventListener('change', function () { lsSet('wellbull_trk', this.checked ? '1' : '0'); renderTracks(); });
+$('trk-h').addEventListener('change', function () { lsSet('wellbull_trkh', this.value); renderTracks(); renderDist(); });
+$('trk-clear').addEventListener('click', function () {
+  if (!confirm('Apagar o trajeto gravado de todas as coleiras neste navegador?')) return;
+  tracks = {}; trackDirty = true; saveTracks(); renderTracks(); renderDist();
+});
+setInterval(saveTracks, 15000);
+window.addEventListener('pagehide', saveTracks);
+
 // atualiza estados (offline por tempo, "há X s") a cada segundo
-setInterval(function () { refreshMarkers(); renderList(); renderDetail(); renderAlarms(); }, 1000);
+setInterval(function () { refreshMarkers(); renderList(); renderDetail(); renderAlarms(); evalAlerts(); }, 1000);
 $('id-input').value = selectedId;
-renderList(); renderDetail(); renderFences(); renderAlarms();
+renderList(); renderDetail(); renderFences(); renderAlarms(); renderTracks();
 </script>
 </body></html>

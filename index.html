@@ -1,251 +1,89 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>EVA RADAR RF - Dashboard MQTT</title>
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    :root {
-      --bg: #000000; --card: #000000; --text: #f8fafc; --muted: #94a3b8;
-      --accent: #38bdf8; --green: #22c55e; --yellow: #eab308; --red: #ef4444;
-      --shadow: 0 4px 12px rgba(0,0,0,0.3);
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html, body {
-      width: 100%; height: 100vh; height: 100dvh; overflow: hidden;
-      background: radial-gradient(ellipse at top, #1e293b 0%, var(--bg) 80%);
-      color: var(--text); font-family: system-ui, -apple-system, sans-serif; padding: 8px;
-    }
-    .container { width: 100%; height: 100%; max-width: 960px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
-    header {
-      background: var(--card); padding: 6px 12px; border-radius: 10px;
-      display: flex; justify-content: space-between; align-items: center;
-      border: 1px solid rgba(255,255,255,0.05); flex-shrink: 0;
-    }
-    h1 { font-size: 0.95rem; color: var(--accent); font-weight: 700; }
-    .status-badge {
-      display: flex; align-items: center; gap: 6px; font-size: 0.7rem; color: var(--muted);
-      background: #0f172a; padding: 4px 8px; border-radius: 12px;
-    }
-    .dot { width: 7px; height: 7px; border-radius: 50%; background: #334155; }
-    .dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); }
-    .grid-main { flex: 1; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
-    @media (min-width: 768px) { .grid-main { display: grid; grid-template-columns: 340px 1fr; } }
-    .card {
-      background: var(--card); border-radius: 12px; padding: 10px;
-      box-shadow: var(--shadow); border: 1px solid rgba(255,255,255,0.05);
-      display: flex; flex-direction: column; justify-content: center;
-    }
-    .card h2 { font-size: 0.75rem; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
-    .leds { display: flex; justify-content: space-around; background: #0f172a; padding: 6px; border-radius: 8px; margin-bottom: 6px; }
-    .led-box { text-align: center; font-size: 0.6rem; color: var(--muted); font-weight: bold; }
-    .led { width: 14px; height: 14px; border-radius: 50%; background: #334155; margin: 0 auto 2px; transition: all 0.3s; }
-    .led.green.active { background: var(--green); box-shadow: 0 0 10px var(--green); }
-    .led.yellow.active { background: var(--yellow); box-shadow: 0 0 10px var(--yellow); }
-    .led.red.active { background: var(--red); box-shadow: 0 0 10px var(--red); }
-    .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
-    .metric { display: flex; justify-content: space-between; padding: 2px 0; font-size: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.03); }
-    .metric span:last-child { font-weight: 700; color: var(--accent); }
-    .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-    .form-group { margin-bottom: 0; }
-    .form-group.full { grid-column: span 2; }
-    .form-group label { display: block; font-size: 0.65rem; color: var(--muted); margin-bottom: 2px; }
-    .form-group select, .form-group input {
-      width: 100%; padding: 5px 8px; background: #050505; border: 1px solid #334155;
-      border-radius: 6px; color: #e61414; font-size: 0.75rem;
-    }
-    .btn {
-      grid-column: span 2; width: 100%; background: var(--accent); color: #000; border: none;
-      padding: 8px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.75rem; margin-top: 2px;
-    }
-    .btn:active { opacity: 0.8; }
-    .btn-calibrar {
-      background: #eab308; color: #000; margin-top: 6px;
-    }
-    .btn-secondary { background: #334155; color: #e2e8f0; }
-    .chart-card { flex: 1; min-height: 0; justify-content: flex-start; }
-    .chart-box { flex: 1; position: relative; width: 100%; height: 100%; min-height: 0; }
-    .info { font-size: 0.65rem; color: var(--muted); margin-top: 6px; line-height: 1.35; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <header>
-      <h1>EVA RADAR RF</h1>
-      <div class="status-badge">
-        <div id="dotWeb" class="dot"></div>
-        <span id="txtWeb">Conectando...</span>
-      </div>
-    </header>
 
-    <div class="grid-main">
-      <div style="display: flex; flex-direction: column; gap: 8px; overflow-y: auto;">
-        <div class="card">
-          <h2>Status do Sistema</h2>
-          <div class="leds">
-            <div class="led-box"><div id="ledVerde" class="led green"></div>AUSENTE</div>
-            <div class="led-box"><div id="ledAmarelo" class="led yellow"></div>SUSPEITA</div>
-            <div class="led-box"><div id="ledVermelho" class="led red"></div>PRESENÇA</div>
-          </div>
-          <div class="metrics-grid">
-            <div class="metric"><span>Fonte:</span><span id="valModo">--</span></div>
-            <div class="metric"><span>Estado:</span><span id="valEstado">OFFLINE</span></div>
-            <div class="metric"><span>RSSI:</span><span id="valRssi">0.0 dBm</span></div>
-            <div class="metric"><span>Delta:</span><span id="valDelta">0.0 dB</span></div>
-            <div class="metric" style="grid-column: span 2;"><span>Referência:</span><span id="valRef">0.0 dBm</span></div>
-          </div>
-        </div>
-
-        <div class="card">
-          <h2>Ajustes do Algoritmo</h2>
-          <div class="controls-grid">
-            <div class="form-group">
-              <label>Limiar Entrada (dB)</label>
-              <input type="number" step="0.1" id="cfgEntrada" value="1.0">
-            </div>
-            <div class="form-group">
-              <label>Limiar Saída (dB)</label>
-              <input type="number" step="0.1" id="cfgSaida" value="1">
-            </div>
-
-            <div class="form-group">
-              <label>EMA α (0.10–0.30)</label>
-              <input type="number" step="0.01" id="cfgAlpha" value="0.18">
-            </div>
-            <div class="form-group">
-              <label>Amostras Entrada</label>
-              <input type="number" step="1" id="cfgAmostrasIn" value="2" min="1" max="20">
-            </div>
-            <div class="form-group">
-              <label>Amostras Saída</label>
-              <input type="number" step="1" id="cfgAmostrasOut" value="2" min="1" max="30">
-            </div>
-            <div class="form-group">
-              <label>Min. SUSPEITA</label>
-              <input type="number" step="1" id="cfgMinSuspect" value="2" min="1" max="15">
-            </div>
-
-            <button class="btn" onclick="enviarConfiguracao()">Aplicar Configuração</button>
-            <button class="btn btn-calibrar" onclick="enviarCalibracao()">⟳ Calibrar Agora</button>
-          </div>
-          <p class="info">
-            Clique em <b>Calibrar Agora</b> com o ambiente vazio.<br>
-            Depois ajuste os limiares se necessário.
-          </p>
-        </div>
-      </div>
-
-      <div class="card chart-card">
-        <h2>Sinal RF em Tempo Real</h2>
-        <div class="chart-box">
-          <canvas id="chartRssi"></canvas>
-        </div>
-      </div>
-    </div>
+<!DOCTYPE html><html><head><meta charset='UTF-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'>
+<title>WellBull</title>
+<link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'>
+<script src='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; }
+#map { width: 100%; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; background: #111; }
+.bull { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.95); border: 3px solid #2e7d32; display: flex; align-items: center; justify-content: center; font-size: 24px; line-height: 1; box-shadow: 0 3px 10px rgba(0,0,0,0.6); }
+.bull.lost { border-color: #c62828; opacity: 0.8; }
+.overlay-panel { position: absolute; top: 15px; right: 15px; z-index: 1000; background: rgba(30, 30, 45, 0.92); color: #fff; padding: 16px; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 280px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+.header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 8px; margin-bottom: 10px; font-weight: bold; font-size: 15px; }
+.badge { padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+.status-ok { background: #2e7d32; color: #e8f5e9; }
+.status-wait { background: #c62828; color: #ffebee; }
+.info-row { display: flex; justify-content: space-between; font-size: 13px; color: #b0b3c6; margin: 6px 0; }
+.val { color: #fff; font-weight: 600; }
+.bat-bar { background: rgba(255,255,255,0.1); height: 6px; border-radius: 3px; overflow: hidden; margin-top: 3px; }
+.bat-fill { height: 100%; background: #4caf50; transition: width 0.4s; }
+</style></head><body>
+<div id='map'></div>
+<div class='overlay-panel'>
+  <div class='header'>
+    <span>🐂 WellBull</span>
+    <span id='status-badge' class='badge status-wait'>Buscando</span>
   </div>
+  <div class='info-row'><span>Bateria:</span><span id='bat-val' class='val'>--%</span></div>
+  <div class='bat-bar'><div id='bat-fill' class='bat-fill' style='width: 0%;'></div></div>
+  <div class='info-row' style='margin-top: 10px;'><span>Satélites:</span><span id='sat-val' class='val'>0</span></div>
+  <div class='info-row'><span>Velocidade:</span><span id='speed-val' class='val'>0 km/h</span></div>
+  <div class='info-row'><span>Altitude:</span><span id='alt-val' class='val'>0 m</span></div>
+  <div class='info-row'><span>Lat:</span><span id='lat-val' class='val'>--</span></div>
+  <div class='info-row'><span>Lon:</span><span id='lon-val' class='val'>--</span></div>
+  <div class='info-row'><span>Ligado há:</span><span id='up-val' class='val'>--</span></div>
+  <div class='info-row'><span>Último reinício:</span><span id='rst-val' class='val'>--</span></div>
+  <div class='info-row'><span>Wi-Fi:</span><span id='rssi-val' class='val'>--</span></div>
+</div>
+<script>
+var map = L.map('map').setView([-10.9333, -37.1296], 17);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  { maxZoom: 19, attribution: 'Tiles &copy; Esri' }).addTo(map);
+var bullIcon = L.divIcon({ className: '', html: "<div id='bull' class='bull'>🐂</div>", iconSize: [40, 40], iconAnchor: [20, 20] });
+var marker = null;
+function updateTracker() {
+  fetch('/data').then(res => res.json()).then(data => {
+    document.getElementById('bat-val').innerText = data.battPercent + '% (' + data.battVolts + 'V)';
+    var batFill = document.getElementById('bat-fill');
+    batFill.style.width = data.battPercent + '%';
+    batFill.style.background = (data.battPercent > 20) ? '#4caf50' : '#f44336';
 
-  <script>
-    const ctx = document.getElementById('chartRssi').getContext('2d');
-    const chart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: [],
-        datasets: [
-          { label: 'RSSI', borderColor: '#38bdf8', data: [], tension: 0.25, pointRadius: 0, borderWidth: 2 },
-          { label: 'Ref', borderColor: '#eab308', borderDash: [4,3], data: [], pointRadius: 0, borderWidth: 1.5 },
-          { label: 'Limiar Ent.', borderColor: '#ef4444', borderDash: [2,2], data: [], pointRadius: 0, borderWidth: 1 },
-          { label: 'Limiar Saída', borderColor: '#f97316', borderDash: [2,2], data: [], pointRadius: 0, borderWidth: 1 }
-        ]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false, animation: false,
-        plugins: { legend: { labels: { color: '#f8fafc', boxWidth: 10, font: { size: 9 } } } },
-        scales: {
-          x: { ticks: { color: '#94a3b8', font: { size: 8 }, maxTicksLimit: 8 }, grid: { color: '#1e293b' } },
-          y: { ticks: { color: '#94a3b8', font: { size: 8 } }, grid: { color: '#334155' } }
-        }
+    document.getElementById('up-val').innerText = data.uptime + ' s';
+    document.getElementById('rst-val').innerText = data.reset;
+    document.getElementById('rssi-val').innerText = data.rssi + ' dBm';
+    document.getElementById('sat-val').innerText = data.satelites;
+    document.getElementById('speed-val').innerText = data.speed + ' km/h';
+    document.getElementById('alt-val').innerText = data.alt + ' m';
+
+    var badge = document.getElementById('status-badge');
+    if (data.gpsFix) {
+      badge.innerText = 'GPS OK';
+      badge.className = 'badge status-ok';
+    } else {
+      badge.innerText = 'Buscando';
+      badge.className = 'badge status-wait';
+    }
+
+    // Mostra a última posição conhecida mesmo se o fix cair momentaneamente
+    if (data.lat !== 0 || data.lon !== 0) {
+      document.getElementById('lat-val').innerText = data.lat.toFixed(6);
+      document.getElementById('lon-val').innerText = data.lon.toFixed(6);
+      var ll = [data.lat, data.lon];
+      if (!marker) {
+        marker = L.marker(ll, { icon: bullIcon }).addTo(map);
+        map.setView(ll, 17);
+      } else {
+        marker.setLatLng(ll);
+        map.panTo(ll);
       }
-    });
-
-    const client = mqtt.connect("wss://broker.emqx.io:8084/mqtt", {
-      clientId: "web_radar_" + Math.random().toString(16).substr(2, 8)
-    });
-    const topicData = "casa/radar/data";
-    const topicCmd  = "casa/radar/cmd";
-
-    client.on("connect", () => {
-      document.getElementById('dotWeb').className = "dot online";
-      document.getElementById('txtWeb').textContent = "Online";
-      client.subscribe(topicData);
-      client.subscribe(topicCmd);
-    });
-    client.on("close", () => {
-      document.getElementById('dotWeb').className = "dot";
-      document.getElementById('txtWeb').textContent = "Offline";
-    });
-
-    client.on("message", (topic, message) => {
-      try {
-        const data = JSON.parse(message.toString());
-
-        if (topic === topicData) {
-          document.getElementById('valModo').innerText  = data.fonte || "ESPNOW";
-          document.getElementById('valRssi').innerText  = (data.rssi ?? 0).toFixed(1) + " dBm";
-          document.getElementById('valRef').innerText   = (data.ref  ?? 0).toFixed(1) + " dBm";
-          document.getElementById('valDelta').innerText = (data.delta ?? 0).toFixed(1) + " dB";
-          document.getElementById('valEstado').innerText= data.estado || "--";
-
-          document.getElementById('ledVerde').className   = 'led green'  + (data.estado === 'AUSENTE'  ? ' active' : '');
-          document.getElementById('ledAmarelo').className = 'led yellow' + (data.estado === 'CALIBRANDO' || data.estado === 'SUSPEITA' ? ' active' : '');
-          document.getElementById('ledVermelho').className= 'led red'    + (data.estado === 'PRESENCA'  ? ' active' : '');
-
-          const limEnt = parseFloat(document.getElementById('cfgEntrada').value) || 5.0;
-          const limSai = parseFloat(document.getElementById('cfgSaida').value) || 2.5;
-          const hora = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
-
-          if (chart.data.labels.length > 45) {
-            chart.data.labels.shift();
-            chart.data.datasets.forEach(ds => ds.data.shift());
-          }
-          chart.data.labels.push(hora);
-          chart.data.datasets[0].data.push(data.rssi);
-          chart.data.datasets[1].data.push(data.ref);
-          chart.data.datasets[2].data.push(data.ref - limEnt);
-          chart.data.datasets[3].data.push(data.ref - limSai);
-          chart.update('none');
-        }
-      } catch (e) { console.error(e); }
-    });
-
-    function enviarConfiguracao() {
-      const cmd = {
-        limiarEntrada:  parseFloat(document.getElementById('cfgEntrada').value),
-        limiarSaida:    parseFloat(document.getElementById('cfgSaida').value),
-        alpha:          parseFloat(document.getElementById('cfgAlpha').value),
-        amostrasEntrada:parseInt(document.getElementById('cfgAmostrasIn').value),
-        amostrasSaida:  parseInt(document.getElementById('cfgAmostrasOut').value),
-        minSuspect:     parseInt(document.getElementById('cfgMinSuspect').value)
-      };
-      client.publish(topicCmd, JSON.stringify(cmd));
-      console.log("Config enviada:", cmd);
+      var b = document.getElementById('bull');
+      if (b) b.className = data.gpsFix ? 'bull' : 'bull lost';
     }
-
-    function enviarCalibracao() {
-      // Envia comando de recalibração
-      client.publish(topicCmd, JSON.stringify({ reset: true }));
-      console.log("Comando de calibração enviado");
-      
-      // Feedback visual no botão
-      const btn = document.querySelector('.btn-calibrar');
-      btn.textContent = "Calibrando...";
-      btn.style.opacity = "0.7";
-      setTimeout(() => {
-        btn.textContent = "⟳ Calibrar Agora";
-        btn.style.opacity = "1";
-      }, 3000);
-    }
-  </script>
-</body>
-</html>
+  }).catch(err => console.log('Erro AJAX:', err));
+}
+setInterval(updateTracker, 2000);
+updateTracker();
+</script>
+</body></html>

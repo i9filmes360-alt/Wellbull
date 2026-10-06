@@ -91,15 +91,15 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
     <div id='list'></div>
 
     <div class='sel-head'>
-      <div class='sel-name'><span id='sel-name'>--</span><button id='alias-btn' class='icon-btn' title='Definir apelido (fica salvo só neste navegador)'>✎</button></div>
+      <div class='sel-name'><span id='sel-name'>--</span></div>
       <span id='status-badge' class='badge status-off'>--</span>
     </div>
 
     <div class='id-row'>
-      <input id='id-input' type='text' placeholder='ID da coleira' autocomplete='off' autocapitalize='off' autocorrect='off' spellcheck='false'>
-      <button id='id-save' title='Grava este ID na coleira selecionada (Enter)'>Gravar</button>
+      <input id='id-input' type='text' placeholder='Nome da coleira' maxlength='24' autocomplete='off' autocapitalize='off' autocorrect='off' spellcheck='false'>
+      <button id='id-save' title='Grava este nome na coleira selecionada (Enter)'>Gravar</button>
     </div>
-    <div class='id-hint'>Enter = grava o ID na coleira selecionada</div>
+    <div class='id-hint' style='display:flex;justify-content:space-between;align-items:center;gap:6px'><span>Enter = grava o nome na coleira (vale em todos os aparelhos)</span><button id='id-change' class='small-btn' title='Troca o ID técnico (normalmente não precisa)'>ID</button></div>
     <div id='id-msg' class='id-msg'></div>
 
     <div class='info-row'><span>Bateria:</span><span id='bat-val' class='val'>--%</span></div>
@@ -140,16 +140,15 @@ function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 
 // ---------------- estado ----------------
 var devices = {};    // id -> { id, d, online, lastMs, marker, iconKey }
-var aliases = {};    // id -> apelido (salvo no navegador)
-try { aliases = JSON.parse(lsGet('wellbull_alias', '{}')) || {}; } catch (e) { aliases = {}; }
 var selectedId = limparId(new URLSearchParams(location.search).get('id')) || limparId(lsGet('wellbull_sel', ''));
 var didFit = false;
+var inputDirty = false;   // true enquanto você digitou algo no campo e ainda não gravou
 
 function getDev(id) {
   if (!devices[id]) devices[id] = { id: id, d: null, online: false, lastMs: 0, marker: null, iconKey: '' };
   return devices[id];
 }
-function nameOf(id) { return aliases[id] || id; }
+function nameOf(id) { var dv = devices[id]; return (dv && dv.d && dv.d.nome) ? dv.d.nome : id; }   // nome gravado NA COLEIRA (igual em todos os aparelhos)
 function isAlive(dev) { return dev.online && (Date.now() - dev.lastMs < STALE_MS); }
 function stateOf(dev) {
   if (!isAlive(dev)) return 'offline';
@@ -235,7 +234,8 @@ function renderList() {
 
 function renderDetail() {
   var dev = devices[selectedId];
-  $('sel-name').innerText = selectedId ? nameOf(selectedId) + (aliases[selectedId] ? '  (' + selectedId + ')' : '') : '--';
+  $('sel-name').innerText = selectedId ? nameOf(selectedId) + (nameOf(selectedId) !== selectedId ? '  (' + selectedId + ')' : '') : '--';
+  if (!inputDirty && document.activeElement !== $('id-input')) $('id-input').value = selectedId ? nameOf(selectedId) : '';
 
   var badge = $('status-badge');
   if (!dev) {
@@ -271,7 +271,8 @@ function refreshMarkers() { Object.keys(devices).forEach(function (id) { updateM
 function selectDev(id, center) {
   selectedId = id;
   lsSet('wellbull_sel', id);
-  $('id-input').value = id;
+  inputDirty = false;
+  $('id-input').value = nameOf(id);
   refreshMarkers(); renderList(); renderDetail();
   var dev = devices[id];
   if (center !== false && dev && dev.marker) map.setView(dev.marker.getLatLng(), Math.max(map.getZoom(), 16));
@@ -350,8 +351,8 @@ client.on('message', function (topic, payload) {
   renderList();
 });
 
-// ---------------- gravar ID na coleira selecionada ----------------
-var pending = null;   // { old, novo, timer }
+// ---------------- gravar NOME / ID na coleira selecionada ----------------
+var pending = null;   // { tipo: 'nome' | 'id', old, valor, timer }
 
 function getKey() {
   var k = lsGet('wellbull_key', '');
@@ -362,57 +363,84 @@ function getKey() {
   return k;
 }
 
+function limparNome(v) { return (v || '').replace(/[|"\\\u0000-\u001f]/g, '').trim().slice(0, 24); }
+
+function enviarComando(tipo, valor, textoEnvio) {
+  var key = getKey();
+  if (!key) return false;
+  var old = selectedId;
+  var payload = (tipo === 'nome') ? ('NOME|' + valor + '|' + key) : (valor + '|' + key);
+  client.publish(TOPIC_PREFIX + '/' + old + '/cmd', payload, { qos: 0, retain: false });
+  msg(textoEnvio, '');
+  pending = {
+    tipo: tipo, old: old, valor: valor,
+    timer: setTimeout(function () { pending = null; msg('Sem resposta. A coleira está online?', 'err'); }, ACK_TIMEOUT)
+  };
+  return true;
+}
+
+// Nome de exibicao: fica gravado NO ESP32 e todos os aparelhos veem igual
+function gravarNome(raw) {
+  var nome = limparNome(raw);
+  var dev = devices[selectedId];
+  if (!selectedId) { msg('Selecione uma coleira primeiro.', 'err'); return; }
+  if (!client.connected) { msg('Sem conexão com o servidor MQTT.', 'err'); return; }
+  if (pending) { msg('Aguarde a resposta da coleira...', ''); return; }
+  if (dev && !isAlive(dev)) { msg('A coleira está offline: não dá para gravar agora.', 'err'); return; }
+  if (nome === nameOf(selectedId)) { inputDirty = false; msg('Esse já é o nome atual.', ''); return; }
+  if (enviarComando('nome', nome, 'Enviando nome para a coleira...')) $('id-input').blur();
+}
+
+// ID tecnico (usado nos topicos): normalmente nao precisa mudar
 function gravarId(raw) {
   var novo = limparId(raw);
   if (!selectedId) { msg('Selecione uma coleira primeiro.', 'err'); return; }
-  if (!novo) { msg('ID inválido (use letras, números, - e _).', 'err'); return; }
+  if (!novo) { msg('ID inválido (use letras sem acento, números, - e _).', 'err'); return; }
   if (novo === selectedId) { msg('A coleira já usa esse ID.', ''); return; }
-  if (devices[novo]) { msg("Já existe outra coleira com o ID '" + novo + "'.", 'err'); $('id-input').value = selectedId; return; }
+  if (devices[novo]) { msg("Já existe outra coleira com o ID '" + novo + "'.", 'err'); return; }
   if (!client.connected) { msg('Sem conexão com o servidor MQTT.', 'err'); return; }
   if (pending) { msg('Aguarde a resposta da coleira...', ''); return; }
-  if (!confirm("Gravar o ID '" + novo + "' na coleira '" + selectedId + "'?")) { $('id-input').value = selectedId; return; }
-  var key = getKey();
-  if (!key) { $('id-input').value = selectedId; return; }
-
-  var old = selectedId;
-  client.publish(TOPIC_PREFIX + '/' + old + '/cmd', novo + '|' + key, { qos: 0, retain: false });
-  msg('Enviando para a coleira...', '');
-  pending = {
-    old: old, novo: novo,
-    timer: setTimeout(function () {
-      pending = null; $('id-input').value = selectedId;
-      msg('Sem resposta. A coleira está online?', 'err');
-    }, ACK_TIMEOUT)
-  };
-  $('id-input').blur();
+  var dev = devices[selectedId];
+  if (dev && !isAlive(dev)) { msg('A coleira está offline: não dá para gravar agora.', 'err'); return; }
+  if (!confirm("Trocar o ID técnico de '" + selectedId + "' para '" + novo + "'?")) return;
+  enviarComando('id', novo, 'Enviando novo ID para a coleira...');
 }
 
 function onAck(id, text) {
   if (!pending || id !== pending.old) return;
-  if (text.indexOf('ok:') === 0) {
+
+  if (pending.tipo === 'nome' && text === 'nome-ok') {
+    clearTimeout(pending.timer); pending = null; inputDirty = false;
+    msg('Nome gravado na coleira. Vale em todos os aparelhos.', 'ok');
+    return;
+  }
+  if (pending.tipo === 'id' && text.indexOf('ok:') === 0) {
     clearTimeout(pending.timer);
-    var old = pending.old, novo = pending.novo;
+    var old = pending.old, novo = pending.valor;
     pending = null;
-    if (aliases[old]) {                      // leva o apelido para o novo ID
-      aliases[novo] = aliases[old]; delete aliases[old];
-      lsSet('wellbull_alias', JSON.stringify(aliases));
-    }
-    selectedId = novo; lsSet('wellbull_sel', novo); $('id-input').value = novo;
+    selectedId = novo; lsSet('wellbull_sel', novo);
     removeDev(old);
-    selectedId = novo;
+    selectedId = novo; inputDirty = false;
     renderList(); renderDetail();
-    msg("ID gravado: '" + novo + "'. Aguardando a coleira reconectar...", 'ok');
-  } else if (text.indexOf('erro:') === 0) {
+    msg("ID alterado para '" + novo + "'. Aguardando a coleira reconectar...", 'ok');
+    return;
+  }
+  if (text.indexOf('erro:') === 0) {
     clearTimeout(pending.timer); pending = null;
-    $('id-input').value = selectedId;
     if (text === 'erro:senha') { lsSet('wellbull_key', ''); msg('Senha incorreta. Tente de novo.', 'err'); }
     else msg('A coleira recusou: ' + text.slice(5), 'err');
   }
 }
 
 // ---------------- ações da interface ----------------
-$('id-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') gravarId(this.value); });
-$('id-save').addEventListener('click', function () { gravarId($('id-input').value); });
+$('id-input').addEventListener('input', function () { inputDirty = true; });
+$('id-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') gravarNome(this.value); });
+$('id-save').addEventListener('click', function () { gravarNome($('id-input').value); });
+$('id-change').addEventListener('click', function () {
+  if (!selectedId) return;
+  var v = prompt("ID técnico atual: '" + selectedId + "'.\nNormalmente não precisa mudar (use o Nome). Novo ID (sem acentos; letras, números, - e _):", selectedId);
+  if (v !== null) gravarId(v);
+});
 $('fit-btn').addEventListener('click', fitAll);
 
 $('list').addEventListener('click', function (e) {
@@ -420,21 +448,10 @@ $('list').addEventListener('click', function (e) {
   if (row) selectDev(row.getAttribute('data-id'), true);
 });
 
-$('alias-btn').addEventListener('click', function () {
-  if (!selectedId) return;
-  var a = prompt("Apelido para a coleira '" + selectedId + "' (vazio remove). Fica salvo só neste navegador:", aliases[selectedId] || '');
-  if (a === null) return;
-  a = a.trim().slice(0, 24);
-  if (a) aliases[selectedId] = a; else delete aliases[selectedId];
-  lsSet('wellbull_alias', JSON.stringify(aliases));
-  lastListHtml = '';
-  refreshMarkers(); renderList(); renderDetail();
-});
-
 $('rm-btn').addEventListener('click', function () {
   var dev = devices[selectedId];
   if (!dev || isAlive(dev)) return;
-  if (!confirm("Remover '" + selectedId + "' da lista? (apaga os últimos dados dela no servidor)")) return;
+  if (!confirm("Remover '" + nameOf(selectedId) + "' da lista? (apaga os últimos dados dela no servidor)")) return;
   client.publish(TOPIC_PREFIX + '/' + selectedId + '/data', '', { qos: 0, retain: true });
   client.publish(TOPIC_PREFIX + '/' + selectedId + '/status', '', { qos: 0, retain: true });
   removeDev(selectedId);

@@ -37,7 +37,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
 .list-head label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .small-btn { background: rgba(255,255,255,0.15); border: none; color: #fff; border-radius: 8px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer; }
 .small-btn:hover { background: rgba(255,255,255,0.28); }
-#list { max-height: 150px; overflow-y: auto; margin-bottom: 12px; border-radius: 10px; background: rgba(255,255,255,0.05); }
+#list, #fence-list { max-height: 150px; overflow-y: auto; margin-bottom: 12px; border-radius: 10px; background: rgba(255,255,255,0.05); }
 .row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: 13px; cursor: pointer; border-left: 3px solid transparent; }
 .row + .row { border-top: 1px solid rgba(255,255,255,0.06); }
 .row:hover { background: rgba(255,255,255,0.08); }
@@ -69,9 +69,37 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
 .bat-fill { height: 100%; background: #4caf50; transition: width 0.4s; }
 .conn { font-size: 11px; margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.15); color: #b0b3c6; display: flex; justify-content: space-between; }
 .danger { background: rgba(198,40,40,0.35) !important; width: 100%; margin-top: 8px; padding: 6px !important; display: none; }
+
+/* cercas */
+.sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.row .edit { width: 22px; height: 22px; font-size: 12px; }
+.chk { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 6px 0; cursor: pointer; }
+.fence-label { background: rgba(0,0,0,0.72); color: #fff; border: none; font-weight: 600; font-size: 11px; box-shadow: none; padding: 1px 7px; }
+.leaflet-tooltip.fence-label::before { display: none; }
+.bull.alarm { border-color: #ff1744; animation: pulse 1s infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,23,68,0.9); } 100% { box-shadow: 0 0 0 16px rgba(255,23,68,0); } }
+@keyframes blink { from { background: #b71c1c; } to { background: #e53935; } }
+#alarm-box { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1600; display: flex; flex-direction: column; gap: 8px; width: min(440px, 94vw); }
+.alarm { color: #fff; border-radius: 12px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; box-shadow: 0 6px 20px rgba(0,0,0,0.5); animation: blink 0.8s infinite alternate; font-size: 14px; }
+.alarm small { display: block; opacity: 0.85; font-size: 11px; margin-top: 2px; }
+.a-btn { display: flex; gap: 6px; flex: none; }
+.a-btn button { background: rgba(255,255,255,0.9); color: #b71c1c; border: none; border-radius: 8px; padding: 6px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
+#toast { display: none; position: absolute; bottom: 150px; left: 50%; transform: translateX(-50%); z-index: 1700; background: rgba(30,30,45,0.96); color: #fff; padding: 9px 14px; border-radius: 10px; font-size: 13px; max-width: 92vw; text-align: center; box-shadow: 0 6px 20px rgba(0,0,0,0.5); }
+#draw-bar { display: none; position: absolute; bottom: 90px; left: 50%; transform: translateX(-50%); z-index: 1500; background: rgba(30,30,45,0.96); color: #fff; padding: 10px 12px; border-radius: 12px; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; max-width: 94vw; box-shadow: 0 6px 20px rgba(0,0,0,0.5); font-size: 13px; }
+#draw-bar button, .m-actions button { border: none; color: #fff; background: rgba(255,255,255,0.15); border-radius: 8px; padding: 7px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+#draw-bar button.ok, .m-actions button.ok { background: #2e7d32; }
+.m-actions button.del { background: #b71c1c; }
+.modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 2000; align-items: center; justify-content: center; }
+.modal { background: #1e1e2d; color: #fff; border-radius: 14px; padding: 18px; width: min(380px, 92vw); max-height: 90vh; overflow: auto; border: 1px solid rgba(255,255,255,0.12); }
+.modal h3 { font-size: 16px; margin-bottom: 12px; }
+.modal .lbl { font-size: 12px; color: #b0b3c6; margin: 12px 0 4px; }
+.modal input[type=text] { width: 100%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 8px; padding: 8px 10px; font-size: 14px; outline: none; }
+.modal input[type=text]:focus { border-color: #4caf50; }
+#m-cows { max-height: 170px; overflow-y: auto; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 4px 10px; }
+.m-actions { display: flex; gap: 8px; margin-top: 16px; align-items: center; }
 </style></head><body>
 <div id='map'></div>
-<div class='overlay-panel'>
+<div class='overlay-panel' id='panel'>
   <div class='header'>
     <span>🐂 WellBull</span>
     <div class='header-right'>
@@ -89,6 +117,16 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
       </span>
     </div>
     <div id='list'></div>
+
+    <div class='list-head'>
+      <span id='fence-title'>Cercas</span>
+      <span style='display:flex;gap:6px;align-items:center'>
+        <button id='snd-test' class='small-btn' title='Testa o som (e libera o áudio neste navegador)'>🔔 Testar</button>
+        <button id='fence-new' class='small-btn'>+ Nova cerca</button>
+      </span>
+    </div>
+    <div id='fence-list'></div>
+    <label class='chk' style='font-size:12px;color:#b0b3c6;margin:-4px 0 12px 2px'><input type='checkbox' id='snd' checked> Som do alarme</label>
 
     <div class='sel-head'>
       <div class='sel-name'><span id='sel-name'>--</span></div>
@@ -119,6 +157,31 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
   </div>
 </div>
 
+<div id='alarm-box'></div>
+<div id='toast'></div>
+<div id='draw-bar'>
+  <span id='draw-txt'>Toque no mapa para marcar os cantos da cerca</span>
+  <button id='draw-undo'>Desfazer</button>
+  <button id='draw-cancel'>Cancelar</button>
+  <button id='draw-ok' class='ok'>Concluir</button>
+</div>
+<div id='modal' class='modal-bg'>
+  <div class='modal'>
+    <h3 id='m-title'>Nova cerca</h3>
+    <div class='lbl'>Nome da cerca (ex.: Curral, Pasto 1)</div>
+    <input id='m-name' type='text' maxlength='30' autocomplete='off'>
+    <div class='lbl'>Coleiras monitoradas nesta cerca</div>
+    <label class='chk'><input type='checkbox' id='m-all'> Todas as coleiras</label>
+    <div id='m-cows'></div>
+    <div class='m-actions'>
+      <button id='m-del' class='del'>Excluir</button>
+      <span style='flex:1'></span>
+      <button id='m-cancel'>Cancelar</button>
+      <button id='m-save' class='ok'>Salvar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ================= CONFIGURAÇÃO (use o MESMO prefixo do .ino) =================
 var BROKER_URL   = 'wss://broker.emqx.io:8084/mqtt';
@@ -142,6 +205,7 @@ function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 var devices = {};    // id -> { id, d, online, lastMs, marker, iconKey }
 var selectedId = limparId(new URLSearchParams(location.search).get('id')) || limparId(lsGet('wellbull_sel', ''));
 var didFit = false;
+var alarms = {};   // id -> { names, fenceIds, since, muted }
 var inputDirty = false;   // true enquanto você digitou algo no campo e ainda não gravou
 
 function getDev(id) {
@@ -180,7 +244,7 @@ function fmtUptime(s) {
 
 // ---------------- marcadores ----------------
 function makeIcon(dev) {
-  var cls = 'bull ' + stateOf(dev) + (isLow(dev) ? ' low' : '') + (dev.id === selectedId ? ' sel' : '');
+  var cls = 'bull ' + stateOf(dev) + (isLow(dev) ? ' low' : '') + (dev.id === selectedId ? ' sel' : '') + (alarms[dev.id] ? ' alarm' : '');
   var html = "<div class='pin'><div class='" + cls + "'>🐂</div><div class='tag'>" + esc(nameOf(dev.id)) + "</div></div>";
   return { html: html };
 }
@@ -225,7 +289,7 @@ function renderList() {
     var dv = devices[id], st = stateOf(dv), low = isLow(dv);
     var bt = (dv.d && st !== 'offline') ? (dv.d.battPercent + '%') : '—';
     return "<div class='row" + (id === selectedId ? ' sel' : '') + "' data-id='" + esc(id) + "'>" +
-           "<span class='dot " + st + "'></span><span class='nm'>" + esc(nameOf(id)) + "</span>" +
+           "<span class='dot " + st + "'></span><span class='nm'>" + esc(nameOf(id)) + (alarms[id] ? ' 🚨' : '') + "</span>" +
            "<span class='bt" + (low ? ' low' : '') + "'>" + (low ? '🪫 ' : '') + bt + "</span></div>";
   }).join('') : "<div class='empty'>Aguardando coleiras...</div>";
 
@@ -298,7 +362,7 @@ var client = mqtt.connect(BROKER_URL, {
 
 client.on('connect', function () {
   $('mqtt-val').innerText = 'conectado';
-  client.subscribe([TOPIC_PREFIX + '/+/data', TOPIC_PREFIX + '/+/status', TOPIC_PREFIX + '/+/ack']);
+  client.subscribe([TOPIC_PREFIX + '/+/data', TOPIC_PREFIX + '/+/status', TOPIC_PREFIX + '/+/ack', TOPIC_PREFIX + '/cercas']);
 });
 client.on('reconnect', function () { $('mqtt-val').innerText = 'reconectando...'; });
 client.on('close', function () { $('mqtt-val').innerText = 'desconectado'; });
@@ -309,6 +373,7 @@ function removeDev(id) {
   if (!dv) return;
   if (dv.marker) map.removeLayer(dv.marker);
   delete devices[id];
+  delete alarms[id]; renderAlarms();
   if (selectedId === id) {
     var rest = Object.keys(devices).sort();
     if (rest.length) { selectDev(rest[0], false); return; }
@@ -318,6 +383,7 @@ function removeDev(id) {
 }
 
 client.on('message', function (topic, payload) {
+  if (topic === TOPIC_PREFIX + '/cercas') { onFencesMessage(payload.toString()); return; }
   var parts = topic.split('/');
   if (parts.length !== 3 || parts[0] !== TOPIC_PREFIX) return;
   var id = limparId(parts[1]), kind = parts[2], m = payload.toString();
@@ -333,6 +399,7 @@ client.on('message', function (topic, payload) {
   } else if (kind === 'data') {
     try { dev.d = JSON.parse(m); } catch (e) { return; }
     dev.lastMs = Date.now();
+    evalFence(dev);
   } else { return; }
 
   updateMarker(dev);
@@ -457,9 +524,316 @@ $('rm-btn').addEventListener('click', function () {
   removeDev(selectedId);
 });
 
+// ======================= CERCAS (geofence) =======================
+var TOPIC_CERCAS = TOPIC_PREFIX + '/cercas';
+var MARGIN_M  = 8;    // tolerância do GPS: só vale como "fora" se passar mais de 8 m da borda
+var CONFIRM_N = 3;    // leituras seguidas (≈6 s) para disparar ou cancelar o alarme
+var COLORS = ['#42a5f5', '#ab47bc', '#ffa726', '#26a69a', '#ec407a', '#9ccc65', '#ffee58', '#8d6e63'];
+var fences = [];
+var fenceLayers = {};
+var drawing = null;   // { pts, poly, dots }
+var editing = null;   // { f, isNew }
+var audioCtx = null;
+var toastT = null;
+
+function sanitizeFence(f) {
+  if (!f || !Array.isArray(f.pts)) return null;
+  var pts = f.pts.filter(function (p) { return Array.isArray(p) && isFinite(p[0]) && isFinite(p[1]); }).map(function (p) { return [+p[0], +p[1]]; });
+  if (pts.length < 3) return null;
+  return {
+    id: limparId(String(f.id || '')) || ('f_' + Math.random().toString(36).slice(2, 8)),
+    name: String(f.name || 'Cerca').slice(0, 30),
+    color: COLORS.indexOf(f.color) >= 0 ? f.color : COLORS[0],
+    pts: pts,
+    all: !!f.all,
+    ids: (Array.isArray(f.ids) ? f.ids : []).map(function (x) { return limparId(String(x)); }).filter(Boolean)
+  };
+}
+try {
+  var cached = JSON.parse(lsGet('wellbull_fences', 'null'));
+  if (cached && Array.isArray(cached.fences)) fences = cached.fences.map(sanitizeFence).filter(Boolean);
+} catch (e) {}
+
+// ---- geometria ----
+function pointInPoly(lat, lon, pts) {
+  var inside = false;
+  for (var i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    var yi = pts[i][0], xi = pts[i][1], yj = pts[j][0], xj = pts[j][1];
+    if (((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+function distToPolyM(lat, lon, pts) {            // distância (m) até a borda mais próxima
+  var k = Math.cos(lat * Math.PI / 180) * 111320, best = Infinity;
+  for (var i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    var ax = (pts[j][1] - lon) * k, ay = (pts[j][0] - lat) * 110540;
+    var bx = (pts[i][1] - lon) * k, by = (pts[i][0] - lat) * 110540;
+    var dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    var t = l2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l2)) : 0;
+    var px = ax + t * dx, py = ay + t * dy;
+    best = Math.min(best, Math.sqrt(px * px + py * py));
+  }
+  return best;
+}
+function inFence(lat, lon, f) { return pointInPoly(lat, lon, f.pts) || distToPolyM(lat, lon, f.pts) <= MARGIN_M; }
+function fencesFor(id) { return fences.filter(function (f) { return f.all || f.ids.indexOf(id) >= 0; }); }
+
+// ---- avaliação do alarme ----
+function evalFence(dev) {
+  var fs = fencesFor(dev.id);
+  if (!fs.length) { dev.outN = 0; dev.inN = 0; if (alarms[dev.id]) clearAlarm(dev.id, false); return; }
+  if (!isAlive(dev) || !dev.d || !dev.d.gpsFix || !hasPos(dev)) return;   // sem GPS válido: não decide nada
+  var inside = fs.some(function (f) { return inFence(dev.d.lat, dev.d.lon, f); });
+  if (inside) {
+    dev.outN = 0; dev.inN = (dev.inN || 0) + 1;
+    if (alarms[dev.id] && dev.inN >= CONFIRM_N) clearAlarm(dev.id, true);
+  } else {
+    dev.inN = 0; dev.outN = (dev.outN || 0) + 1;
+    if (!alarms[dev.id] && dev.outN >= CONFIRM_N) raiseAlarm(dev.id, fs);
+  }
+}
+
+function raiseAlarm(id, fs) {
+  alarms[id] = { names: fs.map(function (f) { return f.name; }).join(', '), fenceIds: fs.map(function (f) { return f.id; }), since: Date.now(), muted: false };
+  renderAlarms(); renderFences(); renderList();
+  if (devices[id]) updateMarker(devices[id]);
+  playAlarm();
+}
+function clearAlarm(id, voltou) {
+  var a = alarms[id];
+  if (!a) return;
+  delete alarms[id];
+  renderAlarms(); renderFences(); renderList();
+  if (devices[id]) updateMarker(devices[id]);
+  if (voltou) toast('✅ ' + nameOf(id) + ' voltou ao cercado ' + a.names);
+}
+
+var lastAlarmHtml = '';
+function renderAlarms() {
+  var ids = Object.keys(alarms);
+  var html = ids.map(function (id) {
+    var a = alarms[id];
+    return "<div class='alarm'><div>🚨 <b>" + esc(nameOf(id)) + "</b> saiu do cercado <b>" + esc(a.names) + "</b>" +
+           "<small>desde " + new Date(a.since).toLocaleTimeString() + (a.muted ? ' · som silenciado' : '') + "</small></div>" +
+           "<div class='a-btn'><button data-act='ver' data-id='" + esc(id) + "'>Ver</button>" +
+           (a.muted ? '' : "<button data-act='mute' data-id='" + esc(id) + "'>Silenciar</button>") + "</div></div>";
+  }).join('');
+  if (html !== lastAlarmHtml) { $('alarm-box').innerHTML = html; lastAlarmHtml = html; }
+  document.title = ids.length ? '🚨 ALARME - WellBull' : 'WellBull';
+}
+$('alarm-box').addEventListener('click', function (e) {
+  var b = e.target.closest('button'); if (!b) return;
+  var id = b.getAttribute('data-id');
+  if (b.getAttribute('data-act') === 'ver') selectDev(id, true);
+  else if (alarms[id]) { alarms[id].muted = true; renderAlarms(); }
+});
+
+function toast(t) {
+  var el = $('toast');
+  el.innerText = t; el.style.display = 'block';
+  clearTimeout(toastT);
+  toastT = setTimeout(function () { el.style.display = 'none'; }, 8000);
+}
+
+// ---- som / vibração ----
+function beep() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    [0, 0.3].forEach(function (t) {
+      var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'square'; o.frequency.value = 880; g.gain.value = 0.15;
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(audioCtx.currentTime + t); o.stop(audioCtx.currentTime + t + 0.2);
+    });
+  } catch (e) {}
+}
+function playAlarm() {
+  if (!$('snd').checked) return;
+  beep();
+  if (navigator.vibrate) navigator.vibrate([250, 100, 250]);
+}
+document.addEventListener('pointerdown', function () {     // navegadores só liberam áudio após um toque
+  try { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch (e) {}
+}, { once: true });
+$('snd').checked = (lsGet('wellbull_snd', '1') === '1');
+$('snd').addEventListener('change', function () { lsSet('wellbull_snd', this.checked ? '1' : '0'); });
+$('snd-test').addEventListener('click', beep);
+setInterval(function () {                                   // repete o som enquanto houver alarme sem silenciar
+  var any = Object.keys(alarms).some(function (id) { return !alarms[id].muted; });
+  if (any) playAlarm();
+}, 3000);
+
+// ---- desenhar cerca ----
+function updateDrawUI() { $('draw-txt').innerText = 'Toque no mapa para marcar os cantos da cerca (' + drawing.pts.length + ' pontos)'; }
+
+function startDraw() {
+  if (drawing) return;
+  if (!client.connected) { toast('Sem conexão com o servidor: conecte para criar cercas.'); return; }
+  drawing = { pts: [], poly: null, dots: [] };
+  map.doubleClickZoom.disable();
+  map.getContainer().style.cursor = 'crosshair';
+  $('panel').style.display = 'none';
+  $('draw-bar').style.display = 'flex';
+  updateDrawUI();
+}
+function endDraw() {
+  if (!drawing) return;
+  if (drawing.poly) map.removeLayer(drawing.poly);
+  drawing.dots.forEach(function (d) { map.removeLayer(d); });
+  drawing = null;
+  map.doubleClickZoom.enable();
+  map.getContainer().style.cursor = '';
+  $('panel').style.display = '';
+  $('draw-bar').style.display = 'none';
+}
+function redrawPreview() {
+  if (drawing.pts.length >= 2) {
+    if (!drawing.poly) drawing.poly = L.polygon(drawing.pts, { color: '#fff', weight: 2, dashArray: '6 6', fillOpacity: 0.1 }).addTo(map);
+    else drawing.poly.setLatLngs(drawing.pts);
+  } else if (drawing.poly) { map.removeLayer(drawing.poly); drawing.poly = null; }
+  updateDrawUI();
+}
+map.on('click', function (e) {
+  if (!drawing) return;
+  drawing.pts.push([e.latlng.lat, e.latlng.lng]);
+  drawing.dots.push(L.circleMarker(e.latlng, { radius: 5, color: '#fff', fillColor: '#42a5f5', fillOpacity: 1, weight: 2 }).addTo(map));
+  redrawPreview();
+});
+$('draw-undo').addEventListener('click', function () {
+  if (!drawing || !drawing.pts.length) return;
+  drawing.pts.pop(); map.removeLayer(drawing.dots.pop()); redrawPreview();
+});
+$('draw-cancel').addEventListener('click', endDraw);
+$('draw-ok').addEventListener('click', function () {
+  if (!drawing) return;
+  if (drawing.pts.length < 3) { toast('Marque pelo menos 3 pontos.'); return; }
+  var pts = drawing.pts.slice();
+  endDraw();
+  openEditor({ id: 'f_' + Math.random().toString(36).slice(2, 8), name: '', color: COLORS[fences.length % COLORS.length], pts: pts, all: false, ids: [] }, true);
+});
+$('fence-new').addEventListener('click', startDraw);
+
+// ---- editor (nome + coleiras) ----
+function openEditor(f, isNew) {
+  editing = { f: f, isNew: isNew };
+  $('m-title').innerText = isNew ? 'Nova cerca' : 'Editar cerca';
+  $('m-name').value = f.name || '';
+  $('m-all').checked = !!f.all;
+  var ids = Object.keys(devices);
+  f.ids.forEach(function (id) { if (ids.indexOf(id) < 0) ids.push(id); });
+  ids.sort();
+  $('m-cows').innerHTML = ids.length ? ids.map(function (id) {
+    var n = nameOf(id);
+    return "<label class='chk'><input type='checkbox' value='" + esc(id) + "'" + (f.ids.indexOf(id) >= 0 ? ' checked' : '') + "> " +
+           esc(n) + (n !== id ? " <small style='color:#8a8da3'>(" + esc(id) + ")</small>" : '') + "</label>";
+  }).join('') : "<div class='empty'>Nenhuma coleira detectada ainda.</div>";
+  syncAllBox();
+  $('m-del').style.display = isNew ? 'none' : 'inline-block';
+  $('modal').style.display = 'flex';
+  $('m-name').focus();
+}
+function syncAllBox() {
+  var all = $('m-all').checked;
+  $('m-cows').style.opacity = all ? '0.4' : '1';
+  Array.prototype.forEach.call($('m-cows').querySelectorAll('input'), function (c) { c.disabled = all; });
+}
+$('m-all').addEventListener('change', syncAllBox);
+function closeEditor() { $('modal').style.display = 'none'; editing = null; }
+$('m-cancel').addEventListener('click', closeEditor);
+$('modal').addEventListener('click', function (e) { if (e.target === this) closeEditor(); });
+
+$('m-save').addEventListener('click', function () {
+  if (!editing) return;
+  var name = $('m-name').value.trim().slice(0, 30);
+  if (!name) { $('m-name').focus(); toast('Dê um nome para a cerca.'); return; }
+  var ids = [];
+  Array.prototype.forEach.call($('m-cows').querySelectorAll('input:checked'), function (c) { ids.push(c.value); });
+  var nf = { id: editing.f.id, name: name, color: editing.f.color, pts: editing.f.pts, all: $('m-all').checked, ids: ids };
+  var list = editing.isNew ? fences.concat([nf]) : fences.map(function (x) { return x.id === nf.id ? nf : x; });
+  if (commitFences(list)) closeEditor();
+});
+$('m-del').addEventListener('click', function () {
+  if (!editing || editing.isNew) return;
+  if (!confirm("Excluir a cerca '" + editing.f.name + "'?")) return;
+  var id = editing.f.id;
+  if (commitFences(fences.filter(function (x) { return x.id !== id; }))) closeEditor();
+});
+
+// ---- salvar / carregar (fica no broker e vale em todos os aparelhos) ----
+function commitFences(list) {
+  if (!client.connected) { toast('Sem conexão com o servidor: não foi possível salvar.'); return false; }
+  var json = JSON.stringify({ v: 1, fences: list });
+  client.publish(TOPIC_CERCAS, json, { qos: 1, retain: true });
+  fences = list;
+  lsSet('wellbull_fences', json);
+  afterFencesChanged();
+  toast('Cercas salvas. Valem em todos os aparelhos.');
+  return true;
+}
+function onFencesMessage(text) {
+  try {
+    var o = JSON.parse(text || '{"fences":[]}');
+    if (!o || !Array.isArray(o.fences)) return;
+    fences = o.fences.map(sanitizeFence).filter(Boolean);
+    lsSet('wellbull_fences', JSON.stringify({ v: 1, fences: fences }));
+    afterFencesChanged();
+  } catch (e) {}
+}
+function afterFencesChanged() {
+  Object.keys(devices).forEach(function (id) {
+    var dv = devices[id]; dv.outN = 0; dv.inN = 0;
+    if (alarms[id] && !fencesFor(id).length) clearAlarm(id, false);
+  });
+  renderFences();
+}
+
+// ---- desenho das cercas no mapa + lista ----
+function renderFences() {
+  var keep = {};
+  fences.forEach(function (f) {
+    keep[f.id] = true;
+    var alarmed = Object.keys(alarms).some(function (id) { return alarms[id].fenceIds.indexOf(f.id) >= 0; });
+    var style = { color: alarmed ? '#ff1744' : f.color, weight: 2.5, fillColor: alarmed ? '#ff1744' : f.color, fillOpacity: alarmed ? 0.22 : 0.12 };
+    var layer = fenceLayers[f.id];
+    if (!layer) {
+      layer = L.polygon(f.pts, style).addTo(map);
+      layer.bindTooltip(esc(f.name), { permanent: true, direction: 'center', className: 'fence-label' });
+      (function (fid) {
+        layer.on('click', function () {
+          if (drawing) return;
+          var cur = fences.filter(function (x) { return x.id === fid; })[0];
+          if (cur) openEditor(cur, false);
+        });
+      })(f.id);
+      fenceLayers[f.id] = layer;
+    } else {
+      layer.setLatLngs(f.pts); layer.setStyle(style); layer.setTooltipContent(esc(f.name));
+    }
+  });
+  Object.keys(fenceLayers).forEach(function (fid) {
+    if (!keep[fid]) { map.removeLayer(fenceLayers[fid]); delete fenceLayers[fid]; }
+  });
+
+  $('fence-title').innerText = 'Cercas (' + fences.length + ')';
+  $('fence-list').innerHTML = fences.length ? fences.map(function (f) {
+    return "<div class='row' data-fid='" + esc(f.id) + "'><span class='sw' style='background:" + f.color + "'></span>" +
+           "<span class='nm'>" + esc(f.name) + "</span><span class='bt'>" + (f.all ? 'todas' : f.ids.length + ' col.') + "</span>" +
+           "<button class='icon-btn edit' title='Editar'>✎</button></div>";
+  }).join('') : "<div class='empty'>Nenhuma cerca. Toque em “+ Nova cerca”.</div>";
+}
+$('fence-list').addEventListener('click', function (e) {
+  var row = e.target.closest('.row'); if (!row) return;
+  var fid = row.getAttribute('data-fid');
+  var cur = fences.filter(function (x) { return x.id === fid; })[0];
+  if (!cur) return;
+  if (e.target.closest('.edit')) openEditor(cur, false);
+  else if (fenceLayers[fid]) map.fitBounds(fenceLayers[fid].getBounds(), { padding: [50, 50], maxZoom: 18 });
+});
+
 // atualiza estados (offline por tempo, "há X s") a cada segundo
-setInterval(function () { refreshMarkers(); renderList(); renderDetail(); }, 1000);
+setInterval(function () { refreshMarkers(); renderList(); renderDetail(); renderAlarms(); }, 1000);
 $('id-input').value = selectedId;
-renderList(); renderDetail();
+renderList(); renderDetail(); renderFences(); renderAlarms();
 </script>
 </body></html>

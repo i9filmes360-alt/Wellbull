@@ -93,8 +93,8 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
 .modal { background: #1e1e2d; color: #fff; border-radius: 14px; padding: 18px; width: min(380px, 92vw); max-height: 90vh; overflow: auto; border: 1px solid rgba(255,255,255,0.12); }
 .modal h3 { font-size: 16px; margin-bottom: 12px; }
 .modal .lbl { font-size: 12px; color: #b0b3c6; margin: 12px 0 4px; }
-.modal input[type=text] { width: 100%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 8px; padding: 8px 10px; font-size: 14px; outline: none; }
-.modal input[type=text]:focus { border-color: #4caf50; }
+.modal input[type=text], .modal input[type=number] { width: 100%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 8px; padding: 8px 10px; font-size: 14px; outline: none; }
+.modal input[type=text]:focus, .modal input[type=number]:focus { border-color: #4caf50; }
 #m-cows { max-height: 170px; overflow-y: auto; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 4px 10px; }
 .m-actions { display: flex; gap: 8px; margin-top: 16px; align-items: center; }
 .alarm.warn { background: #e65100; animation: none; }
@@ -164,6 +164,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
     <div class='info-row'><span>Velocidade:</span><span id='speed-val' class='val'>0 km/h</span></div>
     <div class='info-row'><span>Altitude:</span><span id='alt-val' class='val'>0 m</span></div>
     <div class='info-row'><span>Percorrido:</span><span id='dist-val' class='val'>--</span></div>
+    <div class='info-row'><span>Cerca:</span><span id='cerca-val' class='val'>--</span></div>
     <div class='info-row'><span>Lat:</span><span id='lat-val' class='val'>--</span></div>
     <div class='info-row'><span>Lon:</span><span id='lon-val' class='val'>--</span></div>
     <div class='info-row'><span>Ligado há:</span><span id='up-val' class='val'>--</span></div>
@@ -189,6 +190,9 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
     <h3 id='m-title'>Nova cerca</h3>
     <div class='lbl'>Nome da cerca (ex.: Curral, Pasto 1)</div>
     <input id='m-name' type='text' maxlength='30' autocomplete='off'>
+    <div class='lbl'>Distância de aviso, em metros (0 = sem bip)</div>
+    <input id='m-aviso' type='number' min='0' max='1000' step='1' inputmode='numeric'>
+    <div style='font-size:11px;color:#8a8da3;margin-top:4px'>Dentro da cerca, a partir dessa distância da borda a coleira começa a apitar, acelera e vira som contínuo na borda (GPIO vai a LOW). A mais de 5 m para fora, tudo desliga e aparece o alarme de fuga.</div>
     <div class='lbl'>Coleiras monitoradas nesta cerca</div>
     <label class='chk'><input type='checkbox' id='m-all'> Todas as coleiras</label>
     <div id='m-cows'></div>
@@ -331,7 +335,7 @@ function renderList() {
     var bt = (dv.d && st !== 'offline') ? (dv.d.battPercent + '%') : '—';
     return "<div class='row" + (id === selectedId ? ' sel' : '') + "' data-id='" + esc(id) + "'>" +
            "<span class='dot " + st + "'></span><span class='nm'>" + esc(nameOf(id)) + (alarms[id] ? ' 🚨' : '') + "</span>" +
-           "<span class='bt" + (low ? ' low' : '') + "'>" + (low ? '🪫 ' : '') + ((dv.d && dv.d.solar >= SOLAR_MIN_V && st !== 'offline') ? '☀ ' : '') + bt + "</span></div>";
+           "<span class='bt" + (low ? ' low' : '') + "'>" + (low ? '🪫 ' : '') + ((dv.d && dv.d.solar >= SOLAR_MIN_V && st !== 'offline') ? '☀ ' : '') + ((dv.d && dv.d.cst >= 2 && dv.d.cst <= 3 && st !== 'offline') ? '⚠ ' : '') + bt + "</span></div>";
   }).join('') : "<div class='empty'>Aguardando coleiras...</div>";
 
   if (html !== lastListHtml) { $('list').innerHTML = html; lastListHtml = html; }
@@ -346,7 +350,7 @@ function renderDetail() {
   var badge = $('status-badge');
   if (!dev) {
     badge.innerText = selectedId ? 'Aguardando' : '--'; badge.className = 'badge status-off';
-    ['bat-val','up-val','rst-val','rssi-val','lat-val','lon-val','last-val','sol-val'].forEach(function (i) { $(i).innerText = '--'; });
+    ['bat-val','up-val','rst-val','rssi-val','lat-val','lon-val','last-val','sol-val','cerca-val'].forEach(function (i) { $(i).innerText = '--'; });
     $('sat-val').innerText = '0'; $('speed-val').innerText = '0 km/h'; $('alt-val').innerText = '0 m';
     $('bat-fill').style.width = '0%'; $('rm-btn').style.display = 'none';
     return;
@@ -367,6 +371,12 @@ function renderDetail() {
       sEl.innerText = sv.toFixed(2) + ' V · ' + (sv >= SOLAR_MIN_V ? '☀ carregando' : (sv >= 1 ? 'sol fraco' : 'sem sol/painel'));
       sEl.style.color = (sv >= SOLAR_MIN_V) ? '#ffd54f' : '';
     } else { sEl.innerText = '--'; sEl.style.color = ''; }
+    var cEl = $('cerca-val');
+    if (d.cst !== undefined && isFinite(d.dist)) {
+      var cn = ['sem cerca', 'dentro', '⚠ aviso (bipando)', '⛔ limite (som contínuo)', '🚨 fugiu'];
+      cEl.innerText = (d.cst === 0) ? 'sem cerca/GPS' : (Math.abs(d.dist).toFixed(1) + ' m ' + (d.dist >= 0 ? 'da borda' : 'fora') + ' · ' + (cn[d.cst] || ''));
+      cEl.style.color = d.cst === 4 ? '#ef5350' : (d.cst >= 2 ? '#ffb74d' : '');
+    } else { cEl.innerText = '--'; cEl.style.color = ''; }
     $('up-val').innerText = fmtUptime(d.uptime);
     $('rst-val').innerText = d.reset;
     $('rssi-val').innerText = (d.wifi ? d.wifi + ' · ' : '') + d.rssi + ' dBm';
@@ -596,7 +606,7 @@ $('rm-btn').addEventListener('click', function () {
 
 // ======================= CERCAS (geofence) =======================
 var TOPIC_CERCAS = TOPIC_PREFIX + '/cercas';
-var MARGIN_M  = 8;    // tolerância do GPS: só vale como "fora" se passar mais de 8 m da borda
+var MARGIN_M  = 5;    // "fugiu" = mais de 5 m POR FORA da borda (igual ao ESCAPE_M da coleira)
 var CONFIRM_N = 3;    // leituras seguidas (≈6 s) para disparar ou cancelar o alarme
 var COLORS = ['#42a5f5', '#ab47bc', '#ffa726', '#26a69a', '#ec407a', '#9ccc65', '#ffee58', '#8d6e63'];
 var fences = [];
@@ -616,6 +626,7 @@ function sanitizeFence(f) {
     color: COLORS.indexOf(f.color) >= 0 ? f.color : COLORS[0],
     pts: pts,
     all: !!f.all,
+    aviso: (isFinite(f.aviso) && +f.aviso > 0) ? Math.min(1000, Math.round(+f.aviso)) : 0,
     ids: (Array.isArray(f.ids) ? f.ids : []).map(function (x) { return limparId(String(x)); }).filter(Boolean)
   };
 }
@@ -684,7 +695,7 @@ function renderAlarms() {
   var ids = Object.keys(alarms);
   var html = ids.map(function (id) {
     var a = alarms[id];
-    return "<div class='alarm'><div>🚨 <b>" + esc(nameOf(id)) + "</b> saiu do cercado <b>" + esc(a.names) + "</b>" +
+    return "<div class='alarm'><div>🚨 <b>" + esc(nameOf(id)) + "</b> fugiu do cercado <b>" + esc(a.names) + "</b>" +
            "<small>desde " + new Date(a.since).toLocaleTimeString() + (a.muted ? ' · som silenciado' : '') + "</small></div>" +
            "<div class='a-btn'><button data-act='ver' data-id='" + esc(id) + "'>Ver</button>" +
            (a.muted ? '' : "<button data-act='mute' data-id='" + esc(id) + "'>Silenciar</button>") + "</div></div>";
@@ -808,6 +819,7 @@ function redrawPreview() {
 }
 map.on('click', function (e) {
   if (!drawing) return;
+  if (drawing.pts.length >= 48) { toast('Máximo de 48 pontos por cerca (limite da coleira). Toque em Concluir.'); return; }
   drawing.pts.push([e.latlng.lat, e.latlng.lng]);
   drawing.dots.push(L.circleMarker(e.latlng, { radius: 5, color: '#fff', fillColor: '#42a5f5', fillOpacity: 1, weight: 2 }).addTo(map));
   redrawPreview();
@@ -822,7 +834,7 @@ $('draw-ok').addEventListener('click', function () {
   if (drawing.pts.length < 3) { toast('Marque pelo menos 3 pontos.'); return; }
   var pts = drawing.pts.slice();
   endDraw();
-  openEditor({ id: 'f_' + Math.random().toString(36).slice(2, 8), name: '', color: COLORS[fences.length % COLORS.length], pts: pts, all: false, ids: [] }, true);
+  openEditor({ id: 'f_' + Math.random().toString(36).slice(2, 8), name: '', color: COLORS[fences.length % COLORS.length], pts: pts, all: false, aviso: 10, ids: [] }, true);
 });
 $('fence-new').addEventListener('click', startDraw);
 
@@ -832,6 +844,7 @@ function openEditor(f, isNew) {
   $('m-title').innerText = isNew ? 'Nova cerca' : 'Editar cerca';
   $('m-name').value = f.name || '';
   $('m-all').checked = !!f.all;
+  $('m-aviso').value = f.aviso > 0 ? f.aviso : 0;
   var ids = shownIds();
   f.ids.forEach(function (id) { if (ids.indexOf(id) < 0) ids.push(id); });
   ids.sort();
@@ -861,7 +874,9 @@ $('m-save').addEventListener('click', function () {
   if (!name) { $('m-name').focus(); toast('Dê um nome para a cerca.'); return; }
   var ids = [];
   Array.prototype.forEach.call($('m-cows').querySelectorAll('input:checked'), function (c) { ids.push(c.value); });
-  var nf = { id: editing.f.id, name: name, color: editing.f.color, pts: editing.f.pts, all: $('m-all').checked, ids: ids };
+  var av = Math.round(+$('m-aviso').value);
+  if (!isFinite(av) || av < 0 || av > 1000) { $('m-aviso').focus(); toast('Distância de aviso: use um valor de 0 a 1000 metros.'); return; }
+  var nf = { id: editing.f.id, name: name, color: editing.f.color, pts: editing.f.pts, all: $('m-all').checked, aviso: av, ids: ids };
   var list = editing.isNew ? fences.concat([nf]) : fences.map(function (x) { return x.id === nf.id ? nf : x; });
   if (commitFences(list)) closeEditor();
 });

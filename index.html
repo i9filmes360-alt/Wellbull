@@ -98,7 +98,6 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
 .row .edit { width: 24px; height: 24px; font-size: 12px; background: #374151; border: none; color: #fff; border-radius: 6px; cursor: pointer; }
 .empty { padding: 14px; font-size: 12px; color: #6b7280; text-align: center; }
 
-/* ===== DETALHE DA COLEIRA (LAYOUT CORRIGIDO) ===== */
 #detail-section {
   background: #0f0f17; border-radius: 12px; padding: 14px;
   border: 1px solid #2a2a3a; display: none;
@@ -208,16 +207,6 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
   100% { box-shadow: 0 0 0 16px rgba(255,23,68,0); }
 }
 
-.map-cow-btn {
-  position: absolute; top: 15px; right: 15px; z-index: 1000;
-  background: #1a1a26; color: #fff; padding: 10px 16px;
-  border-radius: 12px; font-size: 14px; font-weight: 700;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.5); cursor: pointer;
-  display: flex; align-items: center; gap: 8px;
-  border: 1px solid #2a2a3a;
-}
-.map-cow-btn:hover { background: #25253a; }
-
 #alarm-box {
   position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
   z-index: 1600; display: flex; flex-direction: column; gap: 8px;
@@ -318,7 +307,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
     <div class='section'>
       <h3>🔔 BIP DE ALERTA</h3>
       <div class='toggle-row'>
-        <span> Som Ativado</span>
+        <span>🔊 Som Ativado</span>
         <label class='switch'><input type='checkbox' id='snd' checked><span class='slider'></span></label>
       </div>
       <button id='snd-test' class='btn btn-secondary'>🔔 Testar</button>
@@ -326,7 +315,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
     </div>
 
     <div class='section'>
-      <h3> COLEIRAS</h3>
+      <h3>🐂 COLEIRAS <span id='cow-count' style='background:#7c3aed;padding:2px 8px;border-radius:10px;font-size:11px;margin-left:6px'>0</span></h3>
       <button id='add-cow' class='btn btn-primary'>➕ Adicionar Coleiras</button>
       <div id='list' class='cow-list'></div>
       <div style='display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px'>
@@ -339,15 +328,15 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
 
     <div class='section'>
       <h3>🔒 CERCAS VIRTUAIS</h3>
-      <button id='fence-new' class='btn btn-success'>✏️ Nova Cerca</button>
+      <button id='fence-new' class='btn btn-success'>️ Nova Cerca</button>
       <div id='fence-list' class='fence-list'></div>
       <button id='remove-all-fences' class='btn btn-secondary'>🗑️ Remover Todas</button>
     </div>
 
     <div class='section'>
-      <h3>📍 TRAJETO</h3>
+      <h3> TRAJETO</h3>
       <div class='toggle-row'>
-        <span>📈 Mostrar</span>
+        <span> Mostrar</span>
         <label class='switch'><input type='checkbox' id='trk-on' checked><span class='slider'></span></label>
       </div>
       <div class='track-controls'>
@@ -367,7 +356,6 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
       <input type='file' id='load-file' accept='.json' style='display:none'>
     </div>
 
-    <!-- PAINEL DE DETALHES (LAYOUT CORRIGIDO) -->
     <div id='detail-section'>
       <div class='detail-head'>
         <div class='detail-name-row'>
@@ -405,7 +393,6 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
   </aside>
 
   <div id='map'></div>
-  <button id='map-cow-btn' class='map-cow-btn'>🐂 Coleiras <span id='cow-count' style='background:#7c3aed;padding:2px 8px;border-radius:10px;font-size:11px'>0</span></button>
 </div>
 
 <div id='alarm-box'></div>
@@ -777,7 +764,6 @@ function onAck(id, text) {
 $('id-input').addEventListener('input', function () { inputDirty = true; });
 $('id-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') gravarNome(this.value); });
 $('id-save').addEventListener('click', function () { gravarNome($('id-input').value); });
-$('map-cow-btn').addEventListener('click', function () { fitAll(); });
 $('fit-btn').addEventListener('click', fitAll);
 
 $('list').addEventListener('click', function (e) {

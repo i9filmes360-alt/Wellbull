@@ -1,4 +1,7 @@
-<!DOCTYPE html><html><head><meta charset='UTF-8'>
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset='UTF-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'>
 <title>WellBull</title>
 <link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'>
@@ -6,185 +9,415 @@
 <script src='https://cdn.jsdelivr.net/npm/mqtt@5.3.4/dist/mqtt.min.js'></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; }
-#map { width: 100%; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; background: #111; }
+html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0f; color: #fff; }
 
-/* marcador no mapa */
-.pin { position: relative; width: 40px; height: 40px; }
-.bull { position: relative; width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.95); border: 3px solid #2e7d32; display: flex; align-items: center; justify-content: center; font-size: 24px; line-height: 1; box-shadow: 0 3px 10px rgba(0,0,0,0.6); }
-.bull.wait { border-color: #c62828; opacity: 0.85; }
-.bull.offline { border-color: #757575; opacity: 0.5; }
-.bull.sel { box-shadow: 0 0 0 4px rgba(66,165,245,0.9), 0 3px 10px rgba(0,0,0,0.6); }
-.bull.low::after { content: ''; position: absolute; top: -3px; right: -3px; width: 13px; height: 13px; border-radius: 50%; background: #ff9800; border: 2px solid #fff; }
-.tag { position: absolute; top: 45px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.78); color: #fff; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 8px; white-space: nowrap; pointer-events: none; }
+.app { display: flex; width: 100vw; height: 100vh; }
+.sidebar {
+  width: 340px; min-width: 340px; height: 100vh;
+  background: #12121a; border-right: 1px solid #2a2a3a;
+  overflow-y: auto; padding: 16px;
+  display: flex; flex-direction: column; gap: 14px;
+  scrollbar-width: thin; scrollbar-color: #3a3a4a #12121a;
+}
+.sidebar::-webkit-scrollbar { width: 6px; }
+.sidebar::-webkit-scrollbar-thumb { background: #3a3a4a; border-radius: 3px; }
+#map { flex: 1; height: 100vh; background: #111; }
 
-/* cartão */
-.overlay-panel { position: absolute; top: 15px; right: 15px; z-index: 1000; background: rgba(30, 30, 45, 0.92); color: #fff; padding: 16px; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 290px; max-height: calc(100vh - 30px); overflow-y: auto; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
-.header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 8px; margin-bottom: 10px; font-weight: bold; font-size: 15px; }
-.header-right { display: flex; align-items: center; gap: 8px; }
-.badge { padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; white-space: nowrap; }
-.status-ok { background: #2e7d32; color: #e8f5e9; }
-.status-wait { background: #c62828; color: #ffebee; }
-.status-off { background: #616161; color: #eeeeee; }
-.min-btn { background: rgba(255,255,255,0.12); border: none; color: #fff; width: 26px; height: 26px; border-radius: 8px; font-size: 18px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
-.min-btn:hover { background: rgba(255,255,255,0.25); }
-.overlay-panel.min { width: auto; min-width: 190px; padding: 10px 12px; }
-.overlay-panel.min .header { border-bottom: none; padding-bottom: 0; margin-bottom: 0; gap: 14px; }
-.overlay-panel.min .panel-body { display: none; }
+.section {
+  background: #1a1a26; border-radius: 12px; padding: 14px;
+  border: 1px solid #2a2a3a;
+}
+.section h3 {
+  font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
+  color: #8a8da3; margin-bottom: 10px; text-transform: uppercase;
+  display: flex; align-items: center; gap: 6px;
+}
 
-/* lista de coleiras */
-.list-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #b0b3c6; margin-bottom: 6px; }
-.list-head label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
-.small-btn { background: rgba(255,255,255,0.15); border: none; color: #fff; border-radius: 8px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer; }
-.small-btn:hover { background: rgba(255,255,255,0.28); }
-#list, #fence-list { max-height: 150px; overflow-y: auto; margin-bottom: 12px; border-radius: 10px; background: rgba(255,255,255,0.05); }
-.row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: 13px; cursor: pointer; border-left: 3px solid transparent; }
-.row + .row { border-top: 1px solid rgba(255,255,255,0.06); }
-.row:hover { background: rgba(255,255,255,0.08); }
-.row.sel { background: rgba(66,165,245,0.18); border-left-color: #42a5f5; }
+.btn {
+  width: 100%; padding: 12px 14px; border: none; border-radius: 10px;
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: all 0.2s; margin-bottom: 8px; color: #fff;
+}
+.btn:last-child { margin-bottom: 0; }
+.btn:hover { transform: translateY(-1px); filter: brightness(1.1); }
+.btn:active { transform: translateY(0); }
+.btn-primary { background: #7c3aed; }
+.btn-success { background: #16a34a; }
+.btn-warning { background: #f59e0b; color: #000; }
+.btn-secondary { background: #374151; }
+.btn-danger  { background: #dc2626; }
+.btn-small { padding: 6px 10px; font-size: 11px; width: auto; }
+
+.toggle-row {
+  display: flex; justify-content: space-between; align-items: center;
+  background: #0f0f17; padding: 10px 12px; border-radius: 10px;
+  margin-bottom: 10px; font-size: 13px; font-weight: 600;
+}
+.toggle-row label { cursor: pointer; }
+.switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider {
+  position: absolute; cursor: pointer; inset: 0;
+  background: #374151; border-radius: 24px; transition: 0.3s;
+}
+.slider::before {
+  content: ''; position: absolute; height: 18px; width: 18px;
+  left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: 0.3s;
+}
+.switch input:checked + .slider { background: #10b981; }
+.switch input:checked + .slider::before { transform: translateX(20px); }
+
+.chk-custom {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.chk-custom input[type=checkbox] {
+  width: 18px; height: 18px; accent-color: #7c3aed; cursor: pointer;
+}
+
+.cow-list, .fence-list {
+  max-height: 180px; overflow-y: auto; margin: 8px 0;
+  background: #0f0f17; border-radius: 8px;
+}
+.cow-list:empty, .fence-list:empty { display: none; }
+.row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 10px; font-size: 13px; cursor: pointer;
+  border-left: 3px solid transparent;
+}
+.row + .row { border-top: 1px solid #2a2a3a; }
+.row:hover { background: #25253a; }
+.row.sel { background: rgba(124,58,237,0.2); border-left-color: #7c3aed; }
 .row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-.row .bt { font-size: 12px; color: #b0b3c6; }
+.row .bt { font-size: 12px; color: #8a8da3; }
 .row .bt.low { color: #ffb74d; font-weight: 700; }
 .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
-.dot.ok { background: #4caf50; } .dot.wait { background: #ef5350; } .dot.offline { background: #757575; }
-.empty { padding: 12px; font-size: 12px; color: #8a8da3; text-align: center; }
-
-/* detalhe */
-.sel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
-.sel-name { font-size: 15px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
-.icon-btn { background: rgba(255,255,255,0.12); border: none; color: #fff; width: 24px; height: 24px; border-radius: 7px; font-size: 13px; cursor: pointer; flex: none; }
-.icon-btn:hover { background: rgba(255,255,255,0.25); }
-.id-row { display: flex; gap: 6px; }
-.id-row input { flex: 1; min-width: 0; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 8px; padding: 7px 10px; font-size: 14px; outline: none; }
-.id-row input:focus { border-color: #4caf50; }
-.id-row input::placeholder { color: #8a8da3; }
-.id-row button { background: #2e7d32; border: none; color: #fff; border-radius: 8px; padding: 0 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
-.id-row button:hover { background: #388e3c; }
-.id-hint { font-size: 10px; color: #8a8da3; margin: 4px 0 0 2px; }
-.id-msg { font-size: 11px; min-height: 16px; margin: 6px 0 8px 2px; color: #b0b3c6; }
-.id-msg.ok { color: #81c784; } .id-msg.err { color: #ef9a9a; }
-.info-row { display: flex; justify-content: space-between; font-size: 13px; color: #b0b3c6; margin: 6px 0; }
-.val { color: #fff; font-weight: 600; text-align: right; }
-.bat-bar { background: rgba(255,255,255,0.1); height: 6px; border-radius: 3px; overflow: hidden; margin-top: 3px; }
-.bat-fill { height: 100%; background: #4caf50; transition: width 0.4s; }
-.conn { font-size: 11px; margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.15); color: #b0b3c6; display: flex; justify-content: space-between; }
-.danger { background: rgba(198,40,40,0.35) !important; width: 100%; margin-top: 8px; padding: 6px !important; display: none; }
-
-/* cercas */
+.dot.ok { background: #10b981; } .dot.wait { background: #ef4444; } .dot.offline { background: #6b7280; }
 .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
-.row .edit { width: 22px; height: 22px; font-size: 12px; }
-.chk { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 6px 0; cursor: pointer; }
-.fence-label { background: rgba(0,0,0,0.72); color: #fff; border: none; font-weight: 600; font-size: 11px; box-shadow: none; padding: 1px 7px; }
-.leaflet-tooltip.fence-label::before { display: none; }
+.row .edit { width: 24px; height: 24px; font-size: 12px; background: #374151; border: none; color: #fff; border-radius: 6px; cursor: pointer; }
+.empty { padding: 14px; font-size: 12px; color: #6b7280; text-align: center; }
+
+/* ===== DETALHE DA COLEIRA (LAYOUT CORRIGIDO) ===== */
+#detail-section {
+  background: #0f0f17; border-radius: 12px; padding: 14px;
+  border: 1px solid #2a2a3a; display: none;
+}
+#detail-section.visible { display: block; }
+
+.detail-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #2a2a3a;
+}
+
+.detail-name-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-name {
+  font-size: 16px;
+  font-weight: 700;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.detail-close {
+  background: #374151; border: none; color: #fff; width: 28px; height: 28px;
+  border-radius: 8px; font-size: 18px; cursor: pointer; display: flex;
+  align-items: center; justify-content: center;
+}
+.detail-close:hover { background: #4b5563; }
+
+.badge {
+  padding: 4px 10px; border-radius: 12px; font-size: 10px; font-weight: 700;
+  white-space: nowrap;
+}
+.status-ok { background: #16a34a; }
+.status-wait { background: #ef4444; }
+.status-off { background: #6b7280; }
+
+.info-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 0; font-size: 13px;
+}
+.info-row .label { color: #8a8da3; }
+.info-row .val { color: #fff; font-weight: 600; text-align: right; }
+
+.id-row { display: flex; gap: 6px; margin-top: 10px; }
+.id-row input {
+  flex: 1; background: #1a1a26; border: 1px solid #2a2a3a; color: #fff;
+  border-radius: 8px; padding: 8px 10px; font-size: 13px; outline: none;
+  min-width: 0;
+}
+.id-row input:focus { border-color: #7c3aed; }
+.id-row button {
+  background: #7c3aed; border: none; color: #fff; border-radius: 8px;
+  padding: 0 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+  flex: 0 0 auto; white-space: nowrap;
+}
+.bat-bar { background: #2a2a3a; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 6px; }
+.bat-fill { height: 100%; background: #10b981; transition: width 0.4s; }
+
+.connection-status {
+  background: #dc2626; color: #fff; padding: 10px 12px;
+  border-radius: 10px; font-size: 12px; font-weight: 600;
+  text-align: center; margin-top: auto;
+}
+.connection-status.ok { background: #16a34a; }
+.connection-status.connecting { background: #f59e0b; color: #000; }
+
+.pin { position: relative; width: 40px; height: 40px; }
+.bull {
+  position: relative; width: 40px; height: 40px; border-radius: 50%;
+  background: rgba(255,255,255,0.95); border: 3px solid #16a34a;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; box-shadow: 0 3px 10px rgba(0,0,0,0.6);
+}
+.bull.wait { border-color: #ef4444; opacity: 0.85; }
+.bull.offline { border-color: #6b7280; opacity: 0.5; }
+.bull.sel { box-shadow: 0 0 0 4px rgba(124,58,237,0.9), 0 3px 10px rgba(0,0,0,0.6); }
+.bull.low::after {
+  content: ''; position: absolute; top: -3px; right: -3px;
+  width: 13px; height: 13px; border-radius: 50%; background: #f59e0b; border: 2px solid #fff;
+}
+.tag {
+  position: absolute; top: 45px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.85); color: #fff; font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 8px; white-space: nowrap; pointer-events: none;
+}
 .bull.alarm { border-color: #ff1744; animation: pulse 1s infinite; }
-@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,23,68,0.9); } 100% { box-shadow: 0 0 0 16px rgba(255,23,68,0); } }
-@keyframes blink { from { background: #b71c1c; } to { background: #e53935; } }
-#alarm-box { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1600; display: flex; flex-direction: column; gap: 8px; width: min(440px, 94vw); }
-.alarm { color: #fff; border-radius: 12px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; box-shadow: 0 6px 20px rgba(0,0,0,0.5); animation: blink 0.8s infinite alternate; font-size: 14px; }
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255,23,68,0.9); }
+  100% { box-shadow: 0 0 0 16px rgba(255,23,68,0); }
+}
+
+.map-cow-btn {
+  position: absolute; top: 15px; right: 15px; z-index: 1000;
+  background: #1a1a26; color: #fff; padding: 10px 16px;
+  border-radius: 12px; font-size: 14px; font-weight: 700;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.5); cursor: pointer;
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid #2a2a3a;
+}
+.map-cow-btn:hover { background: #25253a; }
+
+#alarm-box {
+  position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+  z-index: 1600; display: flex; flex-direction: column; gap: 8px;
+  width: min(440px, 94vw);
+}
+.alarm {
+  color: #fff; border-radius: 12px; padding: 12px 14px;
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  animation: blink 0.8s infinite alternate; font-size: 14px;
+  background: #dc2626;
+}
 .alarm small { display: block; opacity: 0.85; font-size: 11px; margin-top: 2px; }
 .a-btn { display: flex; gap: 6px; flex: none; }
-.a-btn button { background: rgba(255,255,255,0.9); color: #b71c1c; border: none; border-radius: 8px; padding: 6px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
-#toast { display: none; position: absolute; bottom: 150px; left: 50%; transform: translateX(-50%); z-index: 1700; background: rgba(30,30,45,0.96); color: #fff; padding: 9px 14px; border-radius: 10px; font-size: 13px; max-width: 92vw; text-align: center; box-shadow: 0 6px 20px rgba(0,0,0,0.5); }
-#draw-bar { display: none; position: absolute; bottom: 90px; left: 50%; transform: translateX(-50%); z-index: 1500; background: rgba(30,30,45,0.96); color: #fff; padding: 10px 12px; border-radius: 12px; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; max-width: 94vw; box-shadow: 0 6px 20px rgba(0,0,0,0.5); font-size: 13px; }
-#draw-bar button, .m-actions button { border: none; color: #fff; background: rgba(255,255,255,0.15); border-radius: 8px; padding: 7px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
-#draw-bar button.ok, .m-actions button.ok { background: #2e7d32; }
-.m-actions button.del { background: #b71c1c; }
-.modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 2000; align-items: center; justify-content: center; }
-.modal { background: #1e1e2d; color: #fff; border-radius: 14px; padding: 18px; width: min(380px, 92vw); max-height: 90vh; overflow: auto; border: 1px solid rgba(255,255,255,0.12); }
-.modal h3 { font-size: 16px; margin-bottom: 12px; }
-.modal .lbl { font-size: 12px; color: #b0b3c6; margin: 12px 0 4px; }
-.modal input[type=text], .modal input[type=number] { width: 100%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 8px; padding: 8px 10px; font-size: 14px; outline: none; }
-.modal input[type=text]:focus, .modal input[type=number]:focus { border-color: #4caf50; }
-#m-cows { max-height: 170px; overflow-y: auto; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 4px 10px; }
+.a-btn button {
+  background: rgba(255,255,255,0.95); color: #b71c1c; border: none;
+  border-radius: 8px; padding: 6px 10px; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.alarm.warn { background: #ea580c; animation: none; }
+@keyframes blink { from { background: #b91c1c; } to { background: #dc2626; } }
+
+#toast {
+  display: none; position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%);
+  z-index: 1700; background: #16a34a; color: #fff; padding: 10px 16px;
+  border-radius: 10px; font-size: 13px; font-weight: 600;
+  max-width: 92vw; text-align: center; box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+}
+
+#draw-bar {
+  display: none; position: absolute; bottom: 90px; left: 50%; transform: translateX(-50%);
+  z-index: 1500; background: #1a1a26; color: #fff; padding: 12px 14px;
+  border-radius: 12px; gap: 8px; align-items: center; flex-wrap: wrap;
+  justify-content: center; max-width: 94vw; box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  font-size: 13px; border: 1px solid #2a2a3a;
+}
+#draw-bar button {
+  border: none; color: #fff; background: #374151; border-radius: 8px;
+  padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+#draw-bar button.ok { background: #16a34a; }
+
+.modal-bg {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.7); z-index: 2000;
+  align-items: center; justify-content: center;
+}
+.modal {
+  background: #1a1a26; color: #fff; border-radius: 14px; padding: 20px;
+  width: min(400px, 92vw); max-height: 90vh; overflow: auto;
+  border: 1px solid #2a2a3a;
+}
+.modal h3 { font-size: 16px; margin-bottom: 14px; }
+.modal .lbl { font-size: 12px; color: #8a8da3; margin: 12px 0 4px; }
+.modal input[type=text], .modal input[type=number] {
+  width: 100%; background: #0f0f17; border: 1px solid #2a2a3a; color: #fff;
+  border-radius: 8px; padding: 9px 10px; font-size: 14px; outline: none;
+}
+.modal input[type=text]:focus, .modal input[type=number]:focus { border-color: #7c3aed; }
+#m-cows { max-height: 170px; overflow-y: auto; background: #0f0f17; border-radius: 8px; padding: 6px 10px; }
 .m-actions { display: flex; gap: 8px; margin-top: 16px; align-items: center; }
-.alarm.warn { background: #e65100; animation: none; }
-.small-select { background: rgba(255,255,255,0.15); color: #fff; border: none; border-radius: 8px; padding: 3px 6px; font-size: 11px; font-weight: 600; cursor: pointer; }
+.m-actions button {
+  border: none; color: #fff; border-radius: 8px; padding: 9px 14px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.m-actions button.del { background: #dc2626; }
+.m-actions button.ok { background: #16a34a; }
+.m-actions button.cancel { background: #374151; }
+.chk { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 6px 0; cursor: pointer; }
+
+.fence-label { background: rgba(0,0,0,0.75); color: #fff; border: none; font-weight: 600; font-size: 11px; padding: 2px 8px; border-radius: 6px; }
+.leaflet-tooltip.fence-label::before { display: none; }
+
+.small-select {
+  background: #0f0f17; color: #fff; border: 1px solid #2a2a3a;
+  border-radius: 8px; padding: 6px 10px; font-size: 12px; font-weight: 600;
+  cursor: pointer; outline: none;
+}
+.small-select:focus { border-color: #7c3aed; }
 .small-select option { color: #000; }
-.ghost-line { display: none; justify-content: space-between; align-items: center; gap: 6px; font-size: 11px; color: #8a8da3; margin: -6px 0 10px 2px; }
-</style></head><body>
-<div id='map'></div>
-<div class='overlay-panel' id='panel'>
-  <div class='header'>
-    <span>🐂 WellBull</span>
-    <div class='header-right'>
-      <span id='sum-badge' class='badge status-off'>Conectando...</span>
-      <button id='min-btn' class='min-btn' title='Minimizar'>&minus;</button>
-    </div>
-  </div>
 
-  <div class='panel-body'>
-    <div class='list-head'>
-      <span id='list-title'>Coleiras</span>
-      <span style='display:flex;gap:8px;align-items:center'>
-        <label title='Mantém o mapa centralizado na coleira selecionada'><input type='checkbox' id='follow'> Seguir</label>
-        <button id='fit-btn' class='small-btn'>Ver todas</button>
-      </span>
-    </div>
-    <div id='list'></div>
-    <div id='ghost-line' class='ghost-line'>
-      <span id='ghost-txt'></span>
-      <span><button id='ghost-toggle' class='small-btn'>Mostrar</button> <button id='ghost-purge' class='small-btn' title='Apaga essas coleiras do servidor (some em todos os aparelhos)'>Apagar</button></span>
-    </div>
+.track-controls {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  margin-top: 8px;
+}
 
-    <div class='list-head'>
-      <span id='fence-title'>Cercas</span>
-      <span style='display:flex;gap:6px;align-items:center'>
-        <button id='snd-test' class='small-btn' title='Testa o som (e libera o áudio neste navegador)'>🔔 Testar</button>
-        <button id='fence-new' class='small-btn'>+ Nova cerca</button>
-      </span>
-    </div>
-    <div id='fence-list'></div>
-    <label class='chk' style='font-size:12px;color:#b0b3c6;margin:-4px 0 12px 2px'><input type='checkbox' id='snd' checked> Som do alarme</label>
+@media (max-width: 768px) {
+  .app { flex-direction: column; }
+  .sidebar { width: 100%; min-width: 100%; height: 50vh; }
+  #map { height: 50vh; }
+}
+</style>
+</head>
+<body>
 
-    <div class='list-head'>
-      <span>Trajeto</span>
-      <span style='display:flex;gap:6px;align-items:center'>
-        <label><input type='checkbox' id='trk-on' checked> Mostrar</label>
-        <select id='trk-h' class='small-select'><option value='1'>1 h</option><option value='6'>6 h</option><option value='24'>24 h</option></select>
-        <button id='trk-clear' class='small-btn' title='Apaga o trajeto gravado neste navegador'>Limpar</button>
-      </span>
+<div class='app'>
+  <aside class='sidebar'>
+
+    <div class='section'>
+      <h3>🔔 BIP DE ALERTA</h3>
+      <div class='toggle-row'>
+        <span> Som Ativado</span>
+        <label class='switch'><input type='checkbox' id='snd' checked><span class='slider'></span></label>
+      </div>
+      <button id='snd-test' class='btn btn-secondary'>🔔 Testar</button>
+      <button id='activate-all' class='btn btn-warning'>🔵 Ativar Todos</button>
     </div>
 
-    <div class='sel-head'>
-      <div class='sel-name'><span id='sel-name'>--</span></div>
-      <span id='status-badge' class='badge status-off'>--</span>
+    <div class='section'>
+      <h3> COLEIRAS</h3>
+      <button id='add-cow' class='btn btn-primary'>➕ Adicionar Coleiras</button>
+      <div id='list' class='cow-list'></div>
+      <div style='display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px'>
+        <label class='chk-custom' title='Mantém o mapa centralizado na coleira selecionada'>
+          <input type='checkbox' id='follow'> Seguir
+        </label>
+        <button id='fit-btn' class='btn btn-secondary btn-small'>Ver todas</button>
+      </div>
     </div>
 
-    <div class='id-row'>
-      <input id='id-input' type='text' placeholder='Nome da coleira' maxlength='24' autocomplete='off' autocapitalize='off' autocorrect='off' spellcheck='false'>
-      <button id='id-save' title='Grava este nome na coleira selecionada (Enter)'>Gravar</button>
+    <div class='section'>
+      <h3>🔒 CERCAS VIRTUAIS</h3>
+      <button id='fence-new' class='btn btn-success'>✏️ Nova Cerca</button>
+      <div id='fence-list' class='fence-list'></div>
+      <button id='remove-all-fences' class='btn btn-secondary'>🗑️ Remover Todas</button>
     </div>
-    <div class='id-hint' style='display:flex;justify-content:space-between;align-items:center;gap:6px'><span>Enter = grava o nome na coleira (vale em todos os aparelhos)</span><button id='id-change' class='small-btn' title='Troca o ID técnico (normalmente não precisa)'>ID</button></div>
-    <div id='id-msg' class='id-msg'></div>
 
-    <div class='info-row'><span>Bateria:</span><span id='bat-val' class='val'>--%</span></div>
-    <div class='bat-bar'><div id='bat-fill' class='bat-fill' style='width: 0%;'></div></div>
-    <div class='info-row' style='margin-top: 8px;'><span>Painel solar:</span><span id='sol-val' class='val'>--</span></div>
-    <div class='info-row' style='margin-top: 10px;'><span>Satélites:</span><span id='sat-val' class='val'>0</span></div>
-    <div class='info-row'><span>Velocidade:</span><span id='speed-val' class='val'>0 km/h</span></div>
-    <div class='info-row'><span>Altitude:</span><span id='alt-val' class='val'>0 m</span></div>
-    <div class='info-row'><span>Percorrido:</span><span id='dist-val' class='val'>--</span></div>
-    <div class='info-row'><span>Cerca:</span><span id='cerca-val' class='val'>--</span></div>
-    <div class='info-row'><span>Lat:</span><span id='lat-val' class='val'>--</span></div>
-    <div class='info-row'><span>Lon:</span><span id='lon-val' class='val'>--</span></div>
-    <div class='info-row'><span>Ligado há:</span><span id='up-val' class='val'>--</span></div>
-    <div class='info-row'><span>Último reinício:</span><span id='rst-val' class='val'>--</span></div>
-    <div class='info-row'><span>Wi-Fi:</span><span id='rssi-val' class='val'>--</span></div>
-    <button id='rm-btn' class='small-btn danger'>Remover coleira offline da lista</button>
+    <div class='section'>
+      <h3>📍 TRAJETO</h3>
+      <div class='toggle-row'>
+        <span>📈 Mostrar</span>
+        <label class='switch'><input type='checkbox' id='trk-on' checked><span class='slider'></span></label>
+      </div>
+      <div class='track-controls'>
+        <select id='trk-h' class='small-select'>
+          <option value='1'>1 h</option>
+          <option value='6' selected>6 h</option>
+          <option value='24'>24 h</option>
+        </select>
+        <button id='trk-clear' class='btn btn-secondary btn-small' style='flex:1'>🗑️ Limpar</button>
+      </div>
+    </div>
 
-    <div class='conn'><span>Servidor MQTT:</span><span id='mqtt-val'>desconectado</span></div>
-    <div class='conn' style='border:none;margin-top:0;padding-top:0'><span>Última atualização:</span><span id='last-val'>--</span></div>
-  </div>
+    <div class='section'>
+      <h3>📁 ARQUIVO</h3>
+      <button id='save-map' class='btn btn-secondary'>💾 Salvar Mapa</button>
+      <button id='load-map' class='btn btn-primary'>📂 Carregar Mapa</button>
+      <input type='file' id='load-file' accept='.json' style='display:none'>
+    </div>
+
+    <!-- PAINEL DE DETALHES (LAYOUT CORRIGIDO) -->
+    <div id='detail-section'>
+      <div class='detail-head'>
+        <div class='detail-name-row'>
+          <span class='detail-name' id='sel-name' title=''>--</span>
+          <div class='detail-actions'>
+            <span id='status-badge' class='badge status-off'>--</span>
+            <button class='detail-close' id='close-detail' title='Fechar'>×</button>
+          </div>
+        </div>
+      </div>
+      <div class='id-row'>
+        <input id='id-input' type='text' placeholder='Nome da coleira' maxlength='24' autocomplete='off'>
+        <button id='id-save'>Gravar</button>
+      </div>
+      <div style='font-size:10px;color:#6b7280;margin-top:4px'>Enter = grava o nome na coleira</div>
+      <div id='id-msg' style='font-size:11px;min-height:14px;margin-top:6px;color:#8a8da3'></div>
+      
+      <div class='info-row'><span class='label'>Bateria:</span><span id='bat-val' class='val'>--%</span></div>
+      <div class='bat-bar'><div id='bat-fill' class='bat-fill' style='width:0%'></div></div>
+      <div class='info-row'><span class='label'>Painel solar:</span><span id='sol-val' class='val'>--</span></div>
+      <div class='info-row'><span class='label'>Satélites:</span><span id='sat-val' class='val'>0</span></div>
+      <div class='info-row'><span class='label'>Velocidade:</span><span id='speed-val' class='val'>0 km/h</span></div>
+      <div class='info-row'><span class='label'>Altitude:</span><span id='alt-val' class='val'>0 m</span></div>
+      <div class='info-row'><span class='label'>Percorrido:</span><span id='dist-val' class='val'>--</span></div>
+      <div class='info-row'><span class='label'>Cerca:</span><span id='cerca-val' class='val'>--</span></div>
+      <div class='info-row'><span class='label'>Lat:</span><span id='lat-val' class='val'>--</span></div>
+      <div class='info-row'><span class='label'>Lon:</span><span id='lon-val' class='val'>--</span></div>
+      <div class='info-row'><span class='label'>Ligado há:</span><span id='up-val' class='val'>--</span></div>
+      <div class='info-row'><span class='label'>Wi-Fi:</span><span id='rssi-val' class='val'>--</span></div>
+      
+      <button id='rm-btn' class='btn btn-danger btn-small' style='margin-top:10px;display:none'>Remover coleira offline</button>
+    </div>
+
+    <div id='mqtt-status' class='connection-status'>WebSocket desconectado — reconectando...</div>
+  </aside>
+
+  <div id='map'></div>
+  <button id='map-cow-btn' class='map-cow-btn'>🐂 Coleiras <span id='cow-count' style='background:#7c3aed;padding:2px 8px;border-radius:10px;font-size:11px'>0</span></button>
 </div>
 
 <div id='alarm-box'></div>
 <div id='toast'></div>
+
 <div id='draw-bar'>
   <span id='draw-txt'>Toque no mapa para marcar os cantos da cerca</span>
   <button id='draw-undo'>Desfazer</button>
   <button id='draw-cancel'>Cancelar</button>
   <button id='draw-ok' class='ok'>Concluir</button>
 </div>
+
 <div id='modal' class='modal-bg'>
   <div class='modal'>
     <h3 id='m-title'>Nova cerca</h3>
@@ -192,34 +425,48 @@ html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-sy
     <input id='m-name' type='text' maxlength='30' autocomplete='off'>
     <div class='lbl'>Distância de aviso, em metros (0 = sem bip)</div>
     <input id='m-aviso' type='number' min='0' max='1000' step='1' inputmode='numeric'>
-    <div style='font-size:11px;color:#8a8da3;margin-top:4px'>Dentro da cerca, a partir dessa distância da borda a coleira começa a apitar, acelera e vira som contínuo na borda (GPIO vai a LOW). A mais de 5 m para fora, tudo desliga e aparece o alarme de fuga.</div>
+    <div style='font-size:11px;color:#6b7280;margin-top:4px'>Dentro da cerca, a partir dessa distância da borda a coleira começa a apitar. A mais de 5 m para fora, aparece o alarme de fuga.</div>
     <div class='lbl'>Coleiras monitoradas nesta cerca</div>
     <label class='chk'><input type='checkbox' id='m-all'> Todas as coleiras</label>
     <div id='m-cows'></div>
     <div class='m-actions'>
       <button id='m-del' class='del'>Excluir</button>
       <span style='flex:1'></span>
-      <button id='m-cancel'>Cancelar</button>
+      <button id='m-cancel' class='cancel'>Cancelar</button>
       <button id='m-save' class='ok'>Salvar</button>
     </div>
   </div>
 </div>
 
+<div id='modal-cow' class='modal-bg'>
+  <div class='modal'>
+    <h3>Adicionar Coleira Manualmente</h3>
+    <div class='lbl'>ID técnico da coleira</div>
+    <input id='mc-id' type='text' maxlength='24' autocomplete='off' placeholder='ex: coleira01'>
+    <div class='lbl'>Nome de exibição (opcional)</div>
+    <input id='mc-name' type='text' maxlength='24' autocomplete='off' placeholder='ex: Tijuquinha'>
+    <div class='m-actions'>
+      <span style='flex:1'></span>
+      <button id='mc-cancel' class='cancel'>Cancelar</button>
+      <button id='mc-save' class='ok'>Adicionar</button>
+    </div>
+  </div>
+</div>
+
 <script>
-// ================= CONFIGURAÇÃO (use o MESMO prefixo do .ino) =================
 var BROKER_URL   = 'wss://broker.emqx.io:8084/mqtt';
 var TOPIC_PREFIX = 'wellbullbpa6tfor';
-var STALE_MS     = 15000;   // sem dados por 15s => coleira considerada offline
-var SOLAR_MIN_V  = 4.4;     // a partir de 4,4 V o painel está entregando carga
-var LOW_BATT     = 20;      // % abaixo do qual mostra alerta de bateria baixa
-var ASK_LOGIN    = false;   // true = pede usuário/senha do broker (use ao migrar para um broker pago)
-var OFFLINE_ALERT_MS = 60000;   // avisa se a coleira ficar offline por mais de 60 s
-var ACK_TIMEOUT  = 10000;   // espera 10s a resposta da coleira ao gravar ID
-// ==============================================================================
+var STALE_MS     = 15000;
+var SOLAR_MIN_V  = 4.4;
+var LOW_BATT     = 20;
+var ASK_LOGIN    = false;
+var OFFLINE_ALERT_MS = 60000;
+var ACK_TIMEOUT  = 10000;
 
 var map = L.map('map').setView([-10.9333, -37.1296], 17);
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-  { maxZoom: 21, maxNativeZoom: 17, attribution: 'Tiles &copy; Esri' }).addTo(map);
+L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+  maxZoom: 20, attribution: 'Tiles © Google'
+}).addTo(map);
 
 function $(id) { return document.getElementById(id); }
 function esc(t) { return String(t).replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -227,28 +474,26 @@ function limparId(v) { return (v || '').trim().replace(/[^A-Za-z0-9_-]/g, ''); }
 function lsGet(k, def) { try { var v = localStorage.getItem(k); return v === null ? def : v; } catch (e) { return def; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 
-// ---------------- estado ----------------
-var devices = {};    // id -> { id, d, online, lastMs, marker, iconKey }
+var devices = {};
 var selectedId = limparId(new URLSearchParams(location.search).get('id')) || limparId(lsGet('wellbull_sel', ''));
 var didFit = false;
-var alarms = {};   // id -> { names, fenceIds, since, muted }
-var GHOST_DAYS = 3;       // coleira offline sem sinal recente há mais de 3 dias = "inativa"
+var alarms = {};
+var GHOST_DAYS = 3;
 var showGhosts = false;
-var inputDirty = false;   // true enquanto você digitou algo no campo e ainda não gravou
+var inputDirty = false;
+var detailClosedManually = false;
 
 function getDev(id) {
   if (!devices[id]) devices[id] = { id: id, d: null, online: false, lastMs: 0, marker: null, iconKey: '' };
   return devices[id];
 }
-function nameOf(id) { var dv = devices[id]; return (dv && dv.d && dv.d.nome) ? dv.d.nome : id; }   // nome gravado NA COLEIRA (igual em todos os aparelhos)
+function nameOf(id) { var dv = devices[id]; return (dv && dv.d && dv.d.nome) ? dv.d.nome : id; }
 function isAlive(dev) { return dev.online && (Date.now() - dev.lastMs < STALE_MS); }
 function stateOf(dev) {
   if (!isAlive(dev)) return 'offline';
   return (dev.d && dev.d.gpsFix) ? 'ok' : 'wait';
 }
 function isLow(dev) { return !!(dev.d && dev.d.battPercent <= LOW_BATT); }
-// "Inativa" = sobra de teste guardada no servidor: está offline, nunca respondeu nesta
-// sessão e não tem registro de atividade recente (campo ts, que o ESP32 novo envia).
 function isGhost(dv) {
   if (isAlive(dv) || dv.wasAlive) return false;
   var ts = dv.d && dv.d.ts;
@@ -265,29 +510,13 @@ function fmtUptime(s) {
   return sec + ' s';
 }
 
-// ---------------- minimizar cartão ----------------
-(function () {
-  var panel = document.querySelector('.overlay-panel');
-  var btn = $('min-btn');
-  function setMin(min) {
-    panel.classList.toggle('min', min);
-    btn.innerHTML = min ? '+' : '&minus;';
-    btn.title = min ? 'Expandir' : 'Minimizar';
-    lsSet('wellbull_min', min ? '1' : '0');
-  }
-  btn.addEventListener('click', function () { setMin(!panel.classList.contains('min')); });
-  if (lsGet('wellbull_min', '0') === '1') setMin(true);
-})();
-
-// ---------------- marcadores ----------------
 function makeIcon(dev) {
   var cls = 'bull ' + stateOf(dev) + (isLow(dev) ? ' low' : '') + (dev.id === selectedId ? ' sel' : '') + (alarms[dev.id] ? ' alarm' : '');
   var html = "<div class='pin'><div class='" + cls + "'>🐂</div><div class='tag'>" + esc(nameOf(dev.id)) + "</div></div>";
   return { html: html };
 }
-
 function updateMarker(dev) {
-  if (!isShown(dev)) {                       // inativa oculta: tira do mapa
+  if (!isShown(dev)) {
     if (dev.marker) { map.removeLayer(dev.marker); dev.marker = null; dev.iconKey = ''; }
     return;
   }
@@ -306,7 +535,6 @@ function updateMarker(dev) {
     }
   }
 }
-
 function fitAll() {
   var pts = [];
   Object.keys(devices).forEach(function (id) { var dv = devices[id]; if (hasPos(dv) && isShown(dv)) pts.push([dv.d.lat, dv.d.lon]); });
@@ -315,27 +543,18 @@ function fitAll() {
   else map.fitBounds(pts, { padding: [60, 60], maxZoom: 17 });
 }
 
-// ---------------- lista + detalhe ----------------
 var lastListHtml = '';
 function renderList() {
   var ids = shownIds();
-  var ghostN = Object.keys(devices).filter(function (id) { return isGhost(devices[id]); }).length;
-  $('ghost-line').style.display = ghostN ? 'flex' : 'none';
-  $('ghost-txt').innerText = ghostN + (ghostN === 1 ? ' coleira inativa ' : ' coleiras inativas ') + (showGhosts ? '(visíveis)' : '(ocultas)');
-  $('ghost-toggle').innerText = showGhosts ? 'Ocultar' : 'Mostrar';
   var online = ids.filter(function (id) { return isAlive(devices[id]); }).length;
-  $('list-title').innerText = 'Coleiras (' + online + '/' + ids.length + ' online)';
-
-  var sb = $('sum-badge');
-  if (!ids.length) { sb.innerText = 'Sem coleiras'; sb.className = 'badge status-off'; }
-  else { sb.innerText = online + '/' + ids.length + ' online'; sb.className = 'badge ' + (online === ids.length ? 'status-ok' : (online ? 'status-wait' : 'status-off')); }
+  $('cow-count').innerText = online;
 
   var html = ids.length ? ids.map(function (id) {
     var dv = devices[id], st = stateOf(dv), low = isLow(dv);
     var bt = (dv.d && st !== 'offline') ? (dv.d.battPercent + '%') : '—';
     return "<div class='row" + (id === selectedId ? ' sel' : '') + "' data-id='" + esc(id) + "'>" +
            "<span class='dot " + st + "'></span><span class='nm'>" + esc(nameOf(id)) + (alarms[id] ? ' 🚨' : '') + "</span>" +
-           "<span class='bt" + (low ? ' low' : '') + "'>" + (low ? '🪫 ' : '') + ((dv.d && dv.d.solar >= SOLAR_MIN_V && st !== 'offline') ? '☀ ' : '') + ((dv.d && dv.d.cst >= 2 && dv.d.cst <= 3 && st !== 'offline') ? '⚠ ' : '') + bt + "</span></div>";
+           "<span class='bt" + (low ? ' low' : '') + "'>" + (low ? '🪫 ' : '') + ((dv.d && dv.d.solar >= SOLAR_MIN_V && st !== 'offline') ? '☀ ' : '') + bt + "</span></div>";
   }).join('') : "<div class='empty'>Aguardando coleiras...</div>";
 
   if (html !== lastListHtml) { $('list').innerHTML = html; lastListHtml = html; }
@@ -344,17 +563,20 @@ function renderList() {
 function renderDetail() {
   renderDist();
   var dev = devices[selectedId];
-  $('sel-name').innerText = selectedId ? nameOf(selectedId) + (nameOf(selectedId) !== selectedId ? '  (' + selectedId + ')' : '') : '--';
-  if (!inputDirty && document.activeElement !== $('id-input')) $('id-input').value = selectedId ? nameOf(selectedId) : '';
-
-  var badge = $('status-badge');
-  if (!dev) {
-    badge.innerText = selectedId ? 'Aguardando' : '--'; badge.className = 'badge status-off';
-    ['bat-val','up-val','rst-val','rssi-val','lat-val','lon-val','last-val','sol-val','cerca-val'].forEach(function (i) { $(i).innerText = '--'; });
-    $('sat-val').innerText = '0'; $('speed-val').innerText = '0 km/h'; $('alt-val').innerText = '0 m';
-    $('bat-fill').style.width = '0%'; $('rm-btn').style.display = 'none';
+  var ds = $('detail-section');
+  
+  if (!selectedId || !dev) {
+    ds.classList.remove('visible');
     return;
   }
+  
+  ds.classList.add('visible');
+  var fullName = nameOf(selectedId) + (nameOf(selectedId) !== selectedId ? '  (' + selectedId + ')' : '');
+  $('sel-name').innerText = fullName;
+  $('sel-name').title = fullName;
+  if (!inputDirty && document.activeElement !== $('id-input')) $('id-input').value = nameOf(selectedId);
+
+  var badge = $('status-badge');
   var st = stateOf(dev);
   badge.innerText = st === 'ok' ? 'GPS OK' : (st === 'wait' ? 'Buscando' : 'Offline');
   badge.className = 'badge ' + (st === 'ok' ? 'status-ok' : (st === 'wait' ? 'status-wait' : 'status-off'));
@@ -364,34 +586,33 @@ function renderDetail() {
   if (d) {
     $('bat-val').innerText = d.battPercent + '% (' + d.battVolts + 'V)';
     $('bat-fill').style.width = d.battPercent + '%';
-    $('bat-fill').style.background = (d.battPercent > LOW_BATT) ? '#4caf50' : '#f44336';
+    $('bat-fill').style.background = (d.battPercent > LOW_BATT) ? '#10b981' : '#dc2626';
     var sEl = $('sol-val');
     if (d.solar !== undefined && isFinite(d.solar)) {
       var sv = +d.solar;
-      sEl.innerText = sv.toFixed(2) + ' V · ' + (sv >= SOLAR_MIN_V ? '☀ carregando' : (sv >= 1 ? 'sol fraco' : 'sem sol/painel'));
-      sEl.style.color = (sv >= SOLAR_MIN_V) ? '#ffd54f' : '';
+      sEl.innerText = sv.toFixed(2) + ' V · ' + (sv >= SOLAR_MIN_V ? '☀ carregando' : (sv >= 1 ? 'sol fraco' : 'sem sol'));
+      sEl.style.color = (sv >= SOLAR_MIN_V) ? '#fbbf24' : '';
     } else { sEl.innerText = '--'; sEl.style.color = ''; }
     var cEl = $('cerca-val');
     if (d.cst !== undefined && isFinite(d.dist)) {
-      var cn = ['sem cerca', 'dentro', '⚠ aviso (bipando)', '⛔ limite (som contínuo)', '🚨 fugiu'];
-      cEl.innerText = (d.cst === 0) ? 'sem cerca/GPS' : (Math.abs(d.dist).toFixed(1) + ' m ' + (d.dist >= 0 ? 'da borda' : 'fora') + ' · ' + (cn[d.cst] || ''));
-      cEl.style.color = d.cst === 4 ? '#ef5350' : (d.cst >= 2 ? '#ffb74d' : '');
+      var cn = ['sem cerca', 'dentro', '⚠ aviso', '⛔ limite', '🚨 fugiu'];
+      cEl.innerText = (d.cst === 0) ? 'sem cerca/GPS' : (Math.abs(d.dist).toFixed(1) + ' m · ' + (cn[d.cst] || ''));
+      cEl.style.color = d.cst === 4 ? '#ef4444' : (d.cst >= 2 ? '#fbbf24' : '');
     } else { cEl.innerText = '--'; cEl.style.color = ''; }
     $('up-val').innerText = fmtUptime(d.uptime);
-    $('rst-val').innerText = d.reset;
     $('rssi-val').innerText = (d.wifi ? d.wifi + ' · ' : '') + d.rssi + ' dBm';
     $('sat-val').innerText = d.satelites;
     $('speed-val').innerText = d.speed + ' km/h';
     $('alt-val').innerText = d.alt + ' m';
     if (hasPos(dev)) { $('lat-val').innerText = d.lat.toFixed(6); $('lon-val').innerText = d.lon.toFixed(6); }
   }
-  if (dev.lastMs) $('last-val').innerText = 'há ' + Math.round((Date.now() - dev.lastMs) / 1000) + ' s';
 }
 
 function refreshMarkers() { Object.keys(devices).forEach(function (id) { updateMarker(devices[id]); }); }
 
 function selectDev(id, center) {
   selectedId = id;
+  detailClosedManually = false;
   lsSet('wellbull_sel', id);
   inputDirty = false;
   $('id-input').value = nameOf(id);
@@ -400,24 +621,29 @@ function selectDev(id, center) {
   if (center !== false && dev && dev.marker) map.setView(dev.marker.getLatLng(), Math.max(map.getZoom(), 16));
 }
 
-// ---------------- mensagens do cartão ----------------
+$('close-detail').addEventListener('click', function () {
+  selectedId = '';
+  detailClosedManually = true;
+  lsSet('wellbull_sel', '');
+  $('detail-section').classList.remove('visible');
+  refreshMarkers();
+  renderList();
+});
+
 var msgTimer = null;
 function msg(text, kind) {
   var el = $('id-msg');
   el.innerText = text;
-  el.className = 'id-msg' + (kind ? ' ' + kind : '');
+  el.style.color = kind === 'err' ? '#ef4444' : (kind === 'ok' ? '#10b981' : '#8a8da3');
   clearTimeout(msgTimer);
-  if (text) msgTimer = setTimeout(function () { el.innerText = ''; el.className = 'id-msg'; }, 8000);
+  if (text) msgTimer = setTimeout(function () { el.innerText = ''; }, 8000);
 }
 
-// ---------------- MQTT ----------------
 var mqttOpts = {
   clientId: 'wellbull_web_' + Math.random().toString(16).slice(2, 10),
-  clean: true,
-  reconnectPeriod: 3000,
-  connectTimeout: 10000
+  clean: true, reconnectPeriod: 3000, connectTimeout: 10000
 };
-if (ASK_LOGIN) {   // usuário/senha ficam só neste navegador (não ficam no código público)
+if (ASK_LOGIN) {
   var mu = lsGet('wellbull_mu', ''), mp = lsGet('wellbull_mp', '');
   if (!mu) {
     mu = prompt('Usuário do servidor MQTT:') || '';
@@ -428,32 +654,32 @@ if (ASK_LOGIN) {   // usuário/senha ficam só neste navegador (não ficam no c�
 }
 var client = mqtt.connect(BROKER_URL, mqttOpts);
 
-client.on('connect', function () {
-  $('mqtt-val').innerText = 'conectado';
-  client.subscribe([TOPIC_PREFIX + '/+/data', TOPIC_PREFIX + '/+/status', TOPIC_PREFIX + '/+/ack', TOPIC_PREFIX + '/cercas']);
-});
-client.on('reconnect', function () { $('mqtt-val').innerText = 'reconectando...'; });
-client.on('close', function () { $('mqtt-val').innerText = 'desconectado'; });
+function updateMqttStatus(text, cls) {
+  var el = $('mqtt-status');
+  el.innerText = text;
+  el.className = 'connection-status' + (cls ? ' ' + cls : '');
+}
+client.on('connect', function () { updateMqttStatus('WebSocket conectado', 'ok'); client.subscribe([TOPIC_PREFIX + '/+/data', TOPIC_PREFIX + '/+/status', TOPIC_PREFIX + '/+/ack', TOPIC_PREFIX + '/cercas']); });
+client.on('reconnect', function () { updateMqttStatus('WebSocket reconectando...', 'connecting'); });
+client.on('close', function () { updateMqttStatus('WebSocket desconectado — reconectando...', ''); });
 client.on('error', function (e) {
   console.log('MQTT erro:', e);
   if (ASK_LOGIN && /auth|password|credential/i.test(String(e && e.message))) {
     lsSet('wellbull_mu', ''); lsSet('wellbull_mp', '');
-    toast('Login do MQTT recusado. Recarregue a página para digitar de novo.');
+    toast('Login do MQTT recusado. Recarregue a página.');
   }
 });
 
 function removeDev(id) {
-  var dv = devices[id];
-  if (!dv) return;
+  var dv = devices[id]; if (!dv) return;
   if (dv.marker) map.removeLayer(dv.marker);
-  delete devices[id];
-  delete alarms[id]; renderAlarms();
+  delete devices[id]; delete alarms[id]; renderAlarms();
   delete tracks[id]; if (trackLayers[id]) { map.removeLayer(trackLayers[id]); delete trackLayers[id]; }
   clearAlert('bat', id); clearAlert('off', id);
   if (selectedId === id) {
     var rest = shownIds();
     if (rest.length) { selectDev(rest[0], false); return; }
-    selectedId = ''; $('id-input').value = '';
+    selectedId = ''; $('id-input').value = ''; $('detail-section').classList.remove('visible');
   }
   renderList(); renderDetail();
 }
@@ -464,33 +690,27 @@ client.on('message', function (topic, payload) {
   if (parts.length !== 3 || parts[0] !== TOPIC_PREFIX) return;
   var id = limparId(parts[1]), kind = parts[2], m = payload.toString();
   if (!id) return;
-
   if (kind === 'ack') { onAck(id, m); return; }
-  if (m === '') { removeDev(id); return; }       // retido apagado (coleira renomeada/removida)
-
+  if (m === '') { removeDev(id); return; }
   var dev = getDev(id);
   if (kind === 'status') {
     dev.online = (m === 'online');
     if (dev.online && !dev.lastMs) dev.lastMs = Date.now();
   } else if (kind === 'data') {
     try { dev.d = JSON.parse(m); } catch (e) { return; }
-    dev.lastMs = Date.now();
-    evalFence(dev);
-    dev.msgs = (dev.msgs || 0) + 1;
-    addTrackPoint(dev);
+    dev.lastMs = Date.now(); evalFence(dev); dev.msgs = (dev.msgs || 0) + 1; addTrackPoint(dev);
   } else { return; }
-
   updateMarker(dev);
   if (!didFit && hasPos(dev)) { didFit = true; setTimeout(function () {
       fitAll();
       var cur = devices[selectedId];
-      if ((!cur || !isShown(cur)) && !pending) {    // seleção salva não existe / é inativa: escolhe a primeira coleira
+      if ((!cur || !isShown(cur)) && !pending && !detailClosedManually) {
         var okIds = shownIds();
         if (okIds.length) selectDev(okIds[0], false);
-        else if (selectedId) { selectedId = ''; lsSet('wellbull_sel', ''); $('id-input').value = ''; renderDetail(); }
+        else if (selectedId) { selectedId = ''; lsSet('wellbull_sel', ''); $('detail-section').classList.remove('visible'); renderDetail(); }
       }
-    }, 1500); }   // enquadra todas após chegarem as retidas
-  if (!selectedId && isShown(dev)) { selectDev(id, false); return; }
+    }, 1500); }
+  if (!selectedId && !detailClosedManually && isShown(dev)) { selectDev(id, false); return; }
   if (id === selectedId) {
     if ($('follow').checked && kind === 'data' && dev.marker) map.panTo(dev.marker.getLatLng());
     renderDetail();
@@ -498,123 +718,83 @@ client.on('message', function (topic, payload) {
   renderList();
 });
 
-// ---------------- gravar NOME / ID na coleira selecionada ----------------
-var pending = null;   // { tipo: 'nome' | 'id', old, valor, timer }
-
+var pending = null;
 function getKey() {
   var k = lsGet('wellbull_key', '');
-  if (!k) {
-    k = prompt('Senha de gravação (a mesma CHAVE_CMD do .ino):') || '';
-    if (k) lsSet('wellbull_key', k);
-  }
+  if (!k) { k = prompt('Senha de gravação (a mesma CHAVE_CMD do .ino):') || ''; if (k) lsSet('wellbull_key', k); }
   return k;
 }
-
 function limparNome(v) { return (v || '').replace(/[|"\\\u0000-\u001f]/g, '').trim().slice(0, 24); }
-
 function enviarComando(tipo, valor, textoEnvio) {
-  var key = getKey();
-  if (!key) return false;
+  var key = getKey(); if (!key) return false;
   var old = selectedId;
   var payload = (tipo === 'nome') ? ('NOME|' + valor + '|' + key) : (valor + '|' + key);
   client.publish(TOPIC_PREFIX + '/' + old + '/cmd', payload, { qos: 0, retain: false });
   msg(textoEnvio, '');
-  pending = {
-    tipo: tipo, old: old, valor: valor,
-    timer: setTimeout(function () { pending = null; msg('Sem resposta. A coleira está online?', 'err'); }, ACK_TIMEOUT)
-  };
+  pending = { tipo: tipo, old: old, valor: valor, timer: setTimeout(function () { pending = null; msg('Sem resposta. A coleira está online?', 'err'); }, ACK_TIMEOUT) };
   return true;
 }
-
-// Nome de exibicao: fica gravado NO ESP32 e todos os aparelhos veem igual
 function gravarNome(raw) {
-  var nome = limparNome(raw);
-  var dev = devices[selectedId];
+  var nome = limparNome(raw); var dev = devices[selectedId];
   if (!selectedId) { msg('Selecione uma coleira primeiro.', 'err'); return; }
   if (!client.connected) { msg('Sem conexão com o servidor MQTT.', 'err'); return; }
-  if (pending) { msg('Aguarde a resposta da coleira...', ''); return; }
-  if (dev && !isAlive(dev)) { msg('A coleira está offline: não dá para gravar agora.', 'err'); return; }
+  if (pending) { msg('Aguarde a resposta...', ''); return; }
+  if (dev && !isAlive(dev)) { msg('A coleira está offline.', 'err'); return; }
   if (nome === nameOf(selectedId)) { inputDirty = false; msg('Esse já é o nome atual.', ''); return; }
-  if (enviarComando('nome', nome, 'Enviando nome para a coleira...')) $('id-input').blur();
+  if (enviarComando('nome', nome, 'Enviando nome...')) $('id-input').blur();
 }
-
-// ID tecnico (usado nos topicos): normalmente nao precisa mudar
 function gravarId(raw) {
   var novo = limparId(raw);
   if (!selectedId) { msg('Selecione uma coleira primeiro.', 'err'); return; }
-  if (!novo) { msg('ID inválido (use letras sem acento, números, - e _).', 'err'); return; }
+  if (!novo) { msg('ID inválido.', 'err'); return; }
   if (novo === selectedId) { msg('A coleira já usa esse ID.', ''); return; }
-  if (devices[novo]) { msg("Já existe outra coleira com o ID '" + novo + "'.", 'err'); return; }
-  if (!client.connected) { msg('Sem conexão com o servidor MQTT.', 'err'); return; }
-  if (pending) { msg('Aguarde a resposta da coleira...', ''); return; }
+  if (devices[novo]) { msg("Já existe outra coleira com ID '" + novo + "'.", 'err'); return; }
+  if (!client.connected) { msg('Sem conexão.', 'err'); return; }
+  if (pending) { msg('Aguarde...', ''); return; }
   var dev = devices[selectedId];
-  if (dev && !isAlive(dev)) { msg('A coleira está offline: não dá para gravar agora.', 'err'); return; }
-  if (!confirm("Trocar o ID técnico de '" + selectedId + "' para '" + novo + "'?")) return;
-  enviarComando('id', novo, 'Enviando novo ID para a coleira...');
+  if (dev && !isAlive(dev)) { msg('A coleira está offline.', 'err'); return; }
+  if (!confirm("Trocar o ID de '" + selectedId + "' para '" + novo + "'?")) return;
+  enviarComando('id', novo, 'Enviando novo ID...');
 }
-
 function onAck(id, text) {
   if (!pending || id !== pending.old) return;
-
   if (pending.tipo === 'nome' && text === 'nome-ok') {
-    clearTimeout(pending.timer); pending = null; inputDirty = false;
-    msg('Nome gravado na coleira. Vale em todos os aparelhos.', 'ok');
-    return;
+    clearTimeout(pending.timer); pending = null; inputDirty = false; msg('Nome gravado!', 'ok'); return;
   }
   if (pending.tipo === 'id' && text.indexOf('ok:') === 0) {
-    clearTimeout(pending.timer);
-    var old = pending.old, novo = pending.valor;
-    pending = null;
-    selectedId = novo; lsSet('wellbull_sel', novo);
-    removeDev(old);
-    selectedId = novo; inputDirty = false;
-    renderList(); renderDetail();
-    msg("ID alterado para '" + novo + "'. Aguardando a coleira reconectar...", 'ok');
-    return;
+    clearTimeout(pending.timer); var old = pending.old, novo = pending.valor; pending = null;
+    selectedId = novo; lsSet('wellbull_sel', novo); removeDev(old);
+    selectedId = novo; inputDirty = false; renderList(); renderDetail();
+    msg("ID alterado para '" + novo + "'.", 'ok'); return;
   }
   if (text.indexOf('erro:') === 0) {
     clearTimeout(pending.timer); pending = null;
-    if (text === 'erro:senha') { lsSet('wellbull_key', ''); msg('Senha incorreta. Tente de novo.', 'err'); }
+    if (text === 'erro:senha') { lsSet('wellbull_key', ''); msg('Senha incorreta.', 'err'); }
     else msg('A coleira recusou: ' + text.slice(5), 'err');
   }
 }
 
-// ---------------- ações da interface ----------------
 $('id-input').addEventListener('input', function () { inputDirty = true; });
 $('id-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') gravarNome(this.value); });
 $('id-save').addEventListener('click', function () { gravarNome($('id-input').value); });
-$('id-change').addEventListener('click', function () {
-  if (!selectedId) return;
-  var v = prompt("ID técnico atual: '" + selectedId + "'.\nNormalmente não precisa mudar (use o Nome). Novo ID (sem acentos; letras, números, - e _):", selectedId);
-  if (v !== null) gravarId(v);
-});
+$('map-cow-btn').addEventListener('click', function () { fitAll(); });
 $('fit-btn').addEventListener('click', fitAll);
 
 $('list').addEventListener('click', function (e) {
-  var row = e.target.closest('.row');
-  if (row) selectDev(row.getAttribute('data-id'), true);
+  var row = e.target.closest('.row'); if (row) selectDev(row.getAttribute('data-id'), true);
 });
-
 $('rm-btn').addEventListener('click', function () {
-  var dev = devices[selectedId];
-  if (!dev || isAlive(dev)) return;
-  if (!confirm("Remover '" + nameOf(selectedId) + "' da lista? (apaga os últimos dados dela no servidor)")) return;
+  var dev = devices[selectedId]; if (!dev || isAlive(dev)) return;
+  if (!confirm("Remover '" + nameOf(selectedId) + "'?")) return;
   client.publish(TOPIC_PREFIX + '/' + selectedId + '/data', '', { qos: 0, retain: true });
   client.publish(TOPIC_PREFIX + '/' + selectedId + '/status', '', { qos: 0, retain: true });
   removeDev(selectedId);
 });
 
-// ======================= CERCAS (geofence) =======================
 var TOPIC_CERCAS = TOPIC_PREFIX + '/cercas';
-var MARGIN_M  = 5;    // "fugiu" = mais de 5 m POR FORA da borda (igual ao ESCAPE_M da coleira)
-var CONFIRM_N = 3;    // leituras seguidas (≈6 s) para disparar ou cancelar o alarme
+var MARGIN_M = 5, CONFIRM_N = 3;
 var COLORS = ['#42a5f5', '#ab47bc', '#ffa726', '#26a69a', '#ec407a', '#9ccc65', '#ffee58', '#8d6e63'];
-var fences = [];
-var fenceLayers = {};
-var drawing = null;   // { pts, poly, dots }
-var editing = null;   // { f, isNew }
-var audioCtx = null;
-var toastT = null;
+var fences = [], fenceLayers = {}, drawing = null, editing = null, audioCtx = null, toastT = null;
 
 function sanitizeFence(f) {
   if (!f || !Array.isArray(f.pts)) return null;
@@ -624,8 +804,7 @@ function sanitizeFence(f) {
     id: limparId(String(f.id || '')) || ('f_' + Math.random().toString(36).slice(2, 8)),
     name: String(f.name || 'Cerca').slice(0, 30),
     color: COLORS.indexOf(f.color) >= 0 ? f.color : COLORS[0],
-    pts: pts,
-    all: !!f.all,
+    pts: pts, all: !!f.all,
     aviso: (isFinite(f.aviso) && +f.aviso > 0) ? Math.min(1000, Math.round(+f.aviso)) : 0,
     ids: (Array.isArray(f.ids) ? f.ids : []).map(function (x) { return limparId(String(x)); }).filter(Boolean)
   };
@@ -635,7 +814,6 @@ try {
   if (cached && Array.isArray(cached.fences)) fences = cached.fences.map(sanitizeFence).filter(Boolean);
 } catch (e) {}
 
-// ---- geometria ----
 function pointInPoly(lat, lon, pts) {
   var inside = false;
   for (var i = 0, j = pts.length - 1; i < pts.length; j = i++) {
@@ -644,7 +822,7 @@ function pointInPoly(lat, lon, pts) {
   }
   return inside;
 }
-function distToPolyM(lat, lon, pts) {            // distância (m) até a borda mais próxima
+function distToPolyM(lat, lon, pts) {
   var k = Math.cos(lat * Math.PI / 180) * 111320, best = Infinity;
   for (var i = 0, j = pts.length - 1; i < pts.length; j = i++) {
     var ax = (pts[j][1] - lon) * k, ay = (pts[j][0] - lat) * 110540;
@@ -659,55 +837,37 @@ function distToPolyM(lat, lon, pts) {            // distância (m) até a borda 
 function inFence(lat, lon, f) { return pointInPoly(lat, lon, f.pts) || distToPolyM(lat, lon, f.pts) <= MARGIN_M; }
 function fencesFor(id) { return fences.filter(function (f) { return f.all || f.ids.indexOf(id) >= 0; }); }
 
-// ---- avaliação do alarme ----
 function evalFence(dev) {
   var fs = fencesFor(dev.id);
   if (!fs.length) { dev.outN = 0; dev.inN = 0; if (alarms[dev.id]) clearAlarm(dev.id, false); return; }
-  if (!isAlive(dev) || !dev.d || !dev.d.gpsFix || !hasPos(dev)) return;   // sem GPS válido: não decide nada
+  if (!isAlive(dev) || !dev.d || !dev.d.gpsFix || !hasPos(dev)) return;
   var inside = fs.some(function (f) { return inFence(dev.d.lat, dev.d.lon, f); });
-  if (inside) {
-    dev.outN = 0; dev.inN = (dev.inN || 0) + 1;
-    if (alarms[dev.id] && dev.inN >= CONFIRM_N) clearAlarm(dev.id, true);
-  } else {
-    dev.inN = 0; dev.outN = (dev.outN || 0) + 1;
-    if (!alarms[dev.id] && dev.outN >= CONFIRM_N) raiseAlarm(dev.id, fs);
-  }
+  if (inside) { dev.outN = 0; dev.inN = (dev.inN || 0) + 1; if (alarms[dev.id] && dev.inN >= CONFIRM_N) clearAlarm(dev.id, true); }
+  else { dev.inN = 0; dev.outN = (dev.outN || 0) + 1; if (!alarms[dev.id] && dev.outN >= CONFIRM_N) raiseAlarm(dev.id, fs); }
 }
-
 function raiseAlarm(id, fs) {
   alarms[id] = { names: fs.map(function (f) { return f.name; }).join(', '), fenceIds: fs.map(function (f) { return f.id; }), since: Date.now(), muted: false };
-  renderAlarms(); renderFences(); renderList();
-  if (devices[id]) updateMarker(devices[id]);
-  playAlarm();
+  renderAlarms(); renderFences(); renderList(); if (devices[id]) updateMarker(devices[id]); playAlarm();
 }
 function clearAlarm(id, voltou) {
-  var a = alarms[id];
-  if (!a) return;
-  delete alarms[id];
-  renderAlarms(); renderFences(); renderList();
-  if (devices[id]) updateMarker(devices[id]);
+  var a = alarms[id]; if (!a) return; delete alarms[id];
+  renderAlarms(); renderFences(); renderList(); if (devices[id]) updateMarker(devices[id]);
   if (voltou) toast('✅ ' + nameOf(id) + ' voltou ao cercado ' + a.names);
 }
 
-var alerts = {};   // 'bat:id' | 'off:id' -> { id, type, since, hidden }
-var lastAlarmHtml = '';
+var alerts = {}, lastAlarmHtml = '';
 function renderAlarms() {
   var ids = Object.keys(alarms);
   var html = ids.map(function (id) {
     var a = alarms[id];
-    return "<div class='alarm'><div>🚨 <b>" + esc(nameOf(id)) + "</b> fugiu do cercado <b>" + esc(a.names) + "</b>" +
-           "<small>desde " + new Date(a.since).toLocaleTimeString() + (a.muted ? ' · som silenciado' : '') + "</small></div>" +
-           "<div class='a-btn'><button data-act='ver' data-id='" + esc(id) + "'>Ver</button>" +
-           (a.muted ? '' : "<button data-act='mute' data-id='" + esc(id) + "'>Silenciar</button>") + "</div></div>";
+    return "<div class='alarm'><div>🚨 <b>" + esc(nameOf(id)) + "</b> fugiu do cercado <b>" + esc(a.names) + "</b><small>desde " + new Date(a.since).toLocaleTimeString() + (a.muted ? ' · silenciado' : '') + "</small></div><div class='a-btn'><button data-act='ver' data-id='" + esc(id) + "'>Ver</button>" + (a.muted ? '' : "<button data-act='mute' data-id='" + esc(id) + "'>Silenciar</button>") + "</div></div>";
   }).join('');
   var warn = Object.keys(alerts).filter(function (k) { return !alerts[k].hidden; });
   html += warn.map(function (k) {
     var al = alerts[k], dv = devices[al.id], txt;
-    if (al.type === 'bat') txt = "🪫 <b>" + esc(nameOf(al.id)) + "</b> com bateria baixa (" + (dv && dv.d ? dv.d.battPercent : '?') + "%)";
-    else txt = "📡 <b>" + esc(nameOf(al.id)) + "</b> está offline";
-    return "<div class='alarm warn'><div>" + txt + "<small>desde " + new Date(al.since).toLocaleTimeString() + "</small></div>" +
-           "<div class='a-btn'><button data-act='ver' data-id='" + esc(al.id) + "'>Ver</button>" +
-           "<button data-act='dismiss' data-key='" + esc(k) + "'>Dispensar</button></div></div>";
+    if (al.type === 'bat') txt = "🪫 <b>" + esc(nameOf(al.id)) + "</b> bateria baixa";
+    else txt = "📡 <b>" + esc(nameOf(al.id)) + "</b> offline";
+    return "<div class='alarm warn'><div>" + txt + "<small>desde " + new Date(al.since).toLocaleTimeString() + "</small></div><div class='a-btn'><button data-act='ver' data-id='" + esc(al.id) + "'>Ver</button><button data-act='dismiss' data-key='" + esc(k) + "'>Dispensar</button></div></div>";
   }).join('');
   if (html !== lastAlarmHtml) { $('alarm-box').innerHTML = html; lastAlarmHtml = html; }
   document.title = ids.length ? '🚨 ALARME - WellBull' : (warn.length ? '⚠ WellBull' : 'WellBull');
@@ -720,30 +880,18 @@ $('alarm-box').addEventListener('click', function (e) {
   else if (act === 'dismiss') { var k = b.getAttribute('data-key'); if (alerts[k]) { alerts[k].hidden = true; renderAlarms(); } }
 });
 
-// ---- alertas: coleira offline / bateria baixa ----
 function raiseAlert(type, id) {
-  var k = type + ':' + id;
-  if (alerts[k]) return;
-  alerts[k] = { id: id, type: type, since: Date.now(), hidden: false };
-  renderAlarms(); playAlarm();
+  var k = type + ':' + id; if (alerts[k]) return;
+  alerts[k] = { id: id, type: type, since: Date.now(), hidden: false }; renderAlarms(); playAlarm();
 }
 function clearAlert(type, id, msgText) {
-  var k = type + ':' + id;
-  if (!alerts[k]) return;
-  delete alerts[k];
-  renderAlarms();
-  if (msgText) toast(msgText);
+  var k = type + ':' + id; if (!alerts[k]) return; delete alerts[k]; renderAlarms(); if (msgText) toast(msgText);
 }
 function evalAlerts() {
   Object.keys(devices).forEach(function (id) {
     var dv = devices[id], alive = isAlive(dv);
-    if (alive && (dv.msgs || 0) >= 2) {            // só confia que estava viva após receber dados ao vivo
-      dv.wasAlive = true; dv.offSince = 0;
-      clearAlert('off', id, '📡 ' + nameOf(id) + ' voltou a ficar online');
-    } else if (dv.wasAlive && !alive) {
-      if (!dv.offSince) dv.offSince = Date.now();
-      if (Date.now() - dv.offSince >= OFFLINE_ALERT_MS) raiseAlert('off', id);
-    }
+    if (alive && (dv.msgs || 0) >= 2) { dv.wasAlive = true; dv.offSince = 0; clearAlert('off', id, '📡 ' + nameOf(id) + ' voltou online'); }
+    else if (dv.wasAlive && !alive) { if (!dv.offSince) dv.offSince = Date.now(); if (Date.now() - dv.offSince >= OFFLINE_ALERT_MS) raiseAlert('off', id); }
     if (alive && dv.d && isFinite(dv.d.battPercent)) {
       if (dv.d.battPercent <= LOW_BATT) raiseAlert('bat', id);
       else if (dv.d.battPercent > LOW_BATT + 5) clearAlert('bat', id);
@@ -752,13 +900,10 @@ function evalAlerts() {
 }
 
 function toast(t) {
-  var el = $('toast');
-  el.innerText = t; el.style.display = 'block';
-  clearTimeout(toastT);
-  toastT = setTimeout(function () { el.style.display = 'none'; }, 8000);
+  var el = $('toast'); el.innerText = t; el.style.display = 'block';
+  clearTimeout(toastT); toastT = setTimeout(function () { el.style.display = 'none'; }, 5000);
 }
 
-// ---- som / vibração ----
 function beep() {
   try {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -771,43 +916,31 @@ function beep() {
     });
   } catch (e) {}
 }
-function playAlarm() {
-  if (!$('snd').checked) return;
-  beep();
-  if (navigator.vibrate) navigator.vibrate([250, 100, 250]);
-}
-document.addEventListener('pointerdown', function () {     // navegadores só liberam áudio após um toque
+function playAlarm() { if (!$('snd').checked) return; beep(); if (navigator.vibrate) navigator.vibrate([250, 100, 250]); }
+document.addEventListener('pointerdown', function () {
   try { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch (e) {}
 }, { once: true });
 $('snd').checked = (lsGet('wellbull_snd', '1') === '1');
 $('snd').addEventListener('change', function () { lsSet('wellbull_snd', this.checked ? '1' : '0'); });
 $('snd-test').addEventListener('click', beep);
-setInterval(function () {                                   // repete o som enquanto houver alarme sem silenciar
+setInterval(function () {
   var any = Object.keys(alarms).some(function (id) { return !alarms[id].muted; });
   if (any) playAlarm();
 }, 3000);
 
-// ---- desenhar cerca ----
-function updateDrawUI() { $('draw-txt').innerText = 'Toque no mapa para marcar os cantos da cerca (' + drawing.pts.length + ' pontos)'; }
-
+function updateDrawUI() { $('draw-txt').innerText = 'Toque no mapa (' + drawing.pts.length + ' pontos)'; }
 function startDraw() {
   if (drawing) return;
-  if (!client.connected) { toast('Sem conexão com o servidor: conecte para criar cercas.'); return; }
+  if (!client.connected) { toast('Sem conexão com o servidor.'); return; }
   drawing = { pts: [], poly: null, dots: [] };
-  map.doubleClickZoom.disable();
-  map.getContainer().style.cursor = 'crosshair';
-  $('panel').style.display = 'none';
-  $('draw-bar').style.display = 'flex';
-  updateDrawUI();
+  map.doubleClickZoom.disable(); map.getContainer().style.cursor = 'crosshair';
+  $('draw-bar').style.display = 'flex'; updateDrawUI();
 }
 function endDraw() {
   if (!drawing) return;
   if (drawing.poly) map.removeLayer(drawing.poly);
   drawing.dots.forEach(function (d) { map.removeLayer(d); });
-  drawing = null;
-  map.doubleClickZoom.enable();
-  map.getContainer().style.cursor = '';
-  $('panel').style.display = '';
+  drawing = null; map.doubleClickZoom.enable(); map.getContainer().style.cursor = '';
   $('draw-bar').style.display = 'none';
 }
 function redrawPreview() {
@@ -819,44 +952,32 @@ function redrawPreview() {
 }
 map.on('click', function (e) {
   if (!drawing) return;
-  if (drawing.pts.length >= 48) { toast('Máximo de 48 pontos por cerca (limite da coleira). Toque em Concluir.'); return; }
+  if (drawing.pts.length >= 48) { toast('Máximo de 48 pontos.'); return; }
   drawing.pts.push([e.latlng.lat, e.latlng.lng]);
-  drawing.dots.push(L.circleMarker(e.latlng, { radius: 5, color: '#fff', fillColor: '#42a5f5', fillOpacity: 1, weight: 2 }).addTo(map));
+  drawing.dots.push(L.circleMarker(e.latlng, { radius: 5, color: '#fff', fillColor: '#7c3aed', fillOpacity: 1, weight: 2 }).addTo(map));
   redrawPreview();
 });
-$('draw-undo').addEventListener('click', function () {
-  if (!drawing || !drawing.pts.length) return;
-  drawing.pts.pop(); map.removeLayer(drawing.dots.pop()); redrawPreview();
-});
+$('draw-undo').addEventListener('click', function () { if (!drawing || !drawing.pts.length) return; drawing.pts.pop(); map.removeLayer(drawing.dots.pop()); redrawPreview(); });
 $('draw-cancel').addEventListener('click', endDraw);
 $('draw-ok').addEventListener('click', function () {
   if (!drawing) return;
   if (drawing.pts.length < 3) { toast('Marque pelo menos 3 pontos.'); return; }
-  var pts = drawing.pts.slice();
-  endDraw();
+  var pts = drawing.pts.slice(); endDraw();
   openEditor({ id: 'f_' + Math.random().toString(36).slice(2, 8), name: '', color: COLORS[fences.length % COLORS.length], pts: pts, all: false, aviso: 10, ids: [] }, true);
 });
 $('fence-new').addEventListener('click', startDraw);
 
-// ---- editor (nome + coleiras) ----
 function openEditor(f, isNew) {
   editing = { f: f, isNew: isNew };
   $('m-title').innerText = isNew ? 'Nova cerca' : 'Editar cerca';
-  $('m-name').value = f.name || '';
-  $('m-all').checked = !!f.all;
-  $('m-aviso').value = f.aviso > 0 ? f.aviso : 0;
-  var ids = shownIds();
-  f.ids.forEach(function (id) { if (ids.indexOf(id) < 0) ids.push(id); });
-  ids.sort();
+  $('m-name').value = f.name || ''; $('m-all').checked = !!f.all; $('m-aviso').value = f.aviso > 0 ? f.aviso : 0;
+  var ids = shownIds(); f.ids.forEach(function (id) { if (ids.indexOf(id) < 0) ids.push(id); }); ids.sort();
   $('m-cows').innerHTML = ids.length ? ids.map(function (id) {
     var n = nameOf(id);
-    return "<label class='chk'><input type='checkbox' value='" + esc(id) + "'" + (f.ids.indexOf(id) >= 0 ? ' checked' : '') + "> " +
-           esc(n) + (n !== id ? " <small style='color:#8a8da3'>(" + esc(id) + ")</small>" : '') + "</label>";
-  }).join('') : "<div class='empty'>Nenhuma coleira detectada ainda.</div>";
-  syncAllBox();
-  $('m-del').style.display = isNew ? 'none' : 'inline-block';
-  $('modal').style.display = 'flex';
-  $('m-name').focus();
+    return "<label class='chk'><input type='checkbox' value='" + esc(id) + "'" + (f.ids.indexOf(id) >= 0 ? ' checked' : '') + "> " + esc(n) + "</label>";
+  }).join('') : "<div class='empty'>Nenhuma coleira detectada.</div>";
+  syncAllBox(); $('m-del').style.display = isNew ? 'none' : 'inline-block';
+  $('modal').style.display = 'flex'; $('m-name').focus();
 }
 function syncAllBox() {
   var all = $('m-all').checked;
@@ -867,55 +988,43 @@ $('m-all').addEventListener('change', syncAllBox);
 function closeEditor() { $('modal').style.display = 'none'; editing = null; }
 $('m-cancel').addEventListener('click', closeEditor);
 $('modal').addEventListener('click', function (e) { if (e.target === this) closeEditor(); });
-
 $('m-save').addEventListener('click', function () {
   if (!editing) return;
   var name = $('m-name').value.trim().slice(0, 30);
   if (!name) { $('m-name').focus(); toast('Dê um nome para a cerca.'); return; }
-  var ids = [];
-  Array.prototype.forEach.call($('m-cows').querySelectorAll('input:checked'), function (c) { ids.push(c.value); });
+  var ids = []; Array.prototype.forEach.call($('m-cows').querySelectorAll('input:checked'), function (c) { ids.push(c.value); });
   var av = Math.round(+$('m-aviso').value);
-  if (!isFinite(av) || av < 0 || av > 1000) { $('m-aviso').focus(); toast('Distância de aviso: use um valor de 0 a 1000 metros.'); return; }
+  if (!isFinite(av) || av < 0 || av > 1000) { $('m-aviso').focus(); toast('Distância: 0 a 1000 metros.'); return; }
   var nf = { id: editing.f.id, name: name, color: editing.f.color, pts: editing.f.pts, all: $('m-all').checked, aviso: av, ids: ids };
   var list = editing.isNew ? fences.concat([nf]) : fences.map(function (x) { return x.id === nf.id ? nf : x; });
   if (commitFences(list)) closeEditor();
 });
 $('m-del').addEventListener('click', function () {
   if (!editing || editing.isNew) return;
-  if (!confirm("Excluir a cerca '" + editing.f.name + "'?")) return;
-  var id = editing.f.id;
-  if (commitFences(fences.filter(function (x) { return x.id !== id; }))) closeEditor();
+  if (!confirm("Excluir '" + editing.f.name + "'?")) return;
+  if (commitFences(fences.filter(function (x) { return x.id !== editing.f.id; }))) closeEditor();
 });
 
-// ---- salvar / carregar (fica no broker e vale em todos os aparelhos) ----
 function commitFences(list) {
-  if (!client.connected) { toast('Sem conexão com o servidor: não foi possível salvar.'); return false; }
+  if (!client.connected) { toast('Sem conexão.'); return false; }
   var json = JSON.stringify({ v: 1, fences: list });
   client.publish(TOPIC_CERCAS, json, { qos: 1, retain: true });
-  fences = list;
-  lsSet('wellbull_fences', json);
-  afterFencesChanged();
-  toast('Cercas salvas. Valem em todos os aparelhos.');
-  return true;
+  fences = list; lsSet('wellbull_fences', json); afterFencesChanged();
+  toast('Cercas salvas.'); return true;
 }
 function onFencesMessage(text) {
   try {
     var o = JSON.parse(text || '{"fences":[]}');
     if (!o || !Array.isArray(o.fences)) return;
     fences = o.fences.map(sanitizeFence).filter(Boolean);
-    lsSet('wellbull_fences', JSON.stringify({ v: 1, fences: fences }));
-    afterFencesChanged();
+    lsSet('wellbull_fences', JSON.stringify({ v: 1, fences: fences })); afterFencesChanged();
   } catch (e) {}
 }
 function afterFencesChanged() {
-  Object.keys(devices).forEach(function (id) {
-    var dv = devices[id]; dv.outN = 0; dv.inN = 0;
-    if (alarms[id] && !fencesFor(id).length) clearAlarm(id, false);
-  });
+  Object.keys(devices).forEach(function (id) { var dv = devices[id]; dv.outN = 0; dv.inN = 0; if (alarms[id] && !fencesFor(id).length) clearAlarm(id, false); });
   renderFences();
 }
 
-// ---- desenho das cercas no mapa + lista ----
 function renderFences() {
   var keep = {};
   fences.forEach(function (f) {
@@ -926,46 +1035,32 @@ function renderFences() {
     if (!layer) {
       layer = L.polygon(f.pts, style).addTo(map);
       layer.bindTooltip(esc(f.name), { permanent: true, direction: 'center', className: 'fence-label' });
-      (function (fid) {
-        layer.on('click', function () {
-          if (drawing) return;
-          var cur = fences.filter(function (x) { return x.id === fid; })[0];
-          if (cur) openEditor(cur, false);
-        });
-      })(f.id);
+      (function (fid) { layer.on('click', function () { if (drawing) return; var cur = fences.filter(function (x) { return x.id === fid; })[0]; if (cur) openEditor(cur, false); }); })(f.id);
       fenceLayers[f.id] = layer;
-    } else {
-      layer.setLatLngs(f.pts); layer.setStyle(style); layer.setTooltipContent(esc(f.name));
-    }
+    } else { layer.setLatLngs(f.pts); layer.setStyle(style); layer.setTooltipContent(esc(f.name)); }
   });
-  Object.keys(fenceLayers).forEach(function (fid) {
-    if (!keep[fid]) { map.removeLayer(fenceLayers[fid]); delete fenceLayers[fid]; }
-  });
-
-  $('fence-title').innerText = 'Cercas (' + fences.length + ')';
+  Object.keys(fenceLayers).forEach(function (fid) { if (!keep[fid]) { map.removeLayer(fenceLayers[fid]); delete fenceLayers[fid]; } });
   $('fence-list').innerHTML = fences.length ? fences.map(function (f) {
-    return "<div class='row' data-fid='" + esc(f.id) + "'><span class='sw' style='background:" + f.color + "'></span>" +
-           "<span class='nm'>" + esc(f.name) + "</span><span class='bt'>" + (f.all ? 'todas' : f.ids.length + ' col.') + "</span>" +
-           "<button class='icon-btn edit' title='Editar'>✎</button></div>";
-  }).join('') : "<div class='empty'>Nenhuma cerca. Toque em “+ Nova cerca”.</div>";
+    return "<div class='row' data-fid='" + esc(f.id) + "'><span class='sw' style='background:" + f.color + "'></span><span class='nm'>" + esc(f.name) + "</span><span class='bt'>" + (f.all ? 'todas' : f.ids.length + ' col.') + "</span><button class='edit' title='Editar'>✎</button></div>";
+  }).join('') : "<div class='empty'>Nenhuma cerca</div>";
 }
 $('fence-list').addEventListener('click', function (e) {
   var row = e.target.closest('.row'); if (!row) return;
-  var fid = row.getAttribute('data-fid');
-  var cur = fences.filter(function (x) { return x.id === fid; })[0];
+  var fid = row.getAttribute('data-fid'); var cur = fences.filter(function (x) { return x.id === fid; })[0];
   if (!cur) return;
   if (e.target.closest('.edit')) openEditor(cur, false);
   else if (fenceLayers[fid]) map.fitBounds(fenceLayers[fid].getBounds(), { padding: [50, 50], maxZoom: 18 });
 });
+$('remove-all-fences').addEventListener('click', function () {
+  if (!fences.length) { toast('Não há cercas para remover.'); return; }
+  if (!confirm('Remover TODAS as ' + fences.length + ' cerca(s)?')) return;
+  commitFences([]);
+});
 
-// ======================= TRAJETO =======================
-var TRACK_MAX_AGE_MS = 24 * 3600 * 1000;   // guarda até 24 h
-var TRACK_MIN_STEP_M = 5;                  // só grava ponto novo se andou mais de 5 m (evita "ruído" do GPS parado)
-var TRACK_MAX_PTS = 1500;
-var tracks = {};        // id -> [[timestamp, lat, lon], ...]
-var trackLayers = {};
-var trackDirty = false;
+var TRACK_MAX_AGE_MS = 24 * 3600 * 1000, TRACK_MIN_STEP_M = 5, TRACK_MAX_PTS = 1500;
+var tracks = {}, trackLayers = {}, trackDirty = false;
 try { tracks = JSON.parse(lsGet('wellbull_tracks', '{}')) || {}; } catch (e) { tracks = {}; }
+
 $('trk-on').checked = (lsGet('wellbull_trk', '1') === '1');
 $('trk-h').value = lsGet('wellbull_trkh', '6');
 
@@ -990,8 +1085,7 @@ function addTrackPoint(dev) {
   a.push([Date.now(), +dev.d.lat.toFixed(6), +dev.d.lon.toFixed(6)]);
   var cutoff = Date.now() - TRACK_MAX_AGE_MS;
   while (a.length && (a[0][0] < cutoff || a.length > TRACK_MAX_PTS)) a.shift();
-  trackDirty = true;
-  drawTrack(dev.id);
+  trackDirty = true; drawTrack(dev.id);
 }
 function drawTrack(id) {
   var pts = trackPts(id).map(function (p) { return [p[1], p[2]]; });
@@ -1004,8 +1098,7 @@ function drawTrack(id) {
 }
 function renderTracks() { Object.keys(tracks).forEach(drawTrack); }
 function renderDist() {
-  var el = $('dist-val');
-  if (!selectedId) { el.innerText = '--'; return; }
+  var el = $('dist-val'); if (!selectedId) { el.innerText = '--'; return; }
   var p = trackPts(selectedId), m = 0;
   for (var i = 1; i < p.length; i++) m += distM(p[i - 1][1], p[i - 1][2], p[i][1], p[i][2]);
   el.innerText = (m >= 1000 ? (m / 1000).toFixed(2) + ' km' : Math.round(m) + ' m') + ' (' + $('trk-h').value + ' h)';
@@ -1023,28 +1116,73 @@ $('trk-clear').addEventListener('click', function () {
 setInterval(saveTracks, 15000);
 window.addEventListener('pagehide', saveTracks);
 
-// ---- inativas (sobras no servidor) ----
-$('ghost-toggle').addEventListener('click', function () {
-  showGhosts = !showGhosts;
-  refreshMarkers(); renderList(); renderDetail();
-});
-$('ghost-purge').addEventListener('click', function () {
-  var ids = Object.keys(devices).filter(function (id) { return isGhost(devices[id]); });
-  if (!ids.length) return;
-  if (!client.connected) { toast('Sem conexão com o servidor MQTT.'); return; }
-  var lista = ids.map(function (id) { return '• ' + nameOf(id) + (nameOf(id) !== id ? ' (' + id + ')' : ''); }).join('\n');
-  if (!confirm('Apagar do servidor ' + ids.length + ' coleira(s) inativa(s)?\n\n' + lista + '\n\nSe alguma ainda existir de verdade, ela reaparece sozinha quando ligar.')) return;
-  ids.forEach(function (id) {
-    client.publish(TOPIC_PREFIX + '/' + id + '/data', '', { qos: 1, retain: true });
-    client.publish(TOPIC_PREFIX + '/' + id + '/status', '', { qos: 1, retain: true });
-    removeDev(id);
-  });
-  toast('Coleiras inativas apagadas do servidor.');
+$('add-cow').addEventListener('click', function () { $('modal-cow').style.display = 'flex'; $('mc-id').focus(); });
+$('mc-cancel').addEventListener('click', function () { $('modal-cow').style.display = 'none'; });
+$('modal-cow').addEventListener('click', function (e) { if (e.target === this) this.style.display = 'none'; });
+$('mc-save').addEventListener('click', function () {
+  var id = limparId($('mc-id').value);
+  var nome = limparNome($('mc-name').value);
+  if (!id) { toast('Informe o ID técnico.'); return; }
+  if (devices[id]) { toast('Essa coleira já existe.'); return; }
+  var dev = getDev(id);
+  if (nome) dev.d = { nome: nome, battPercent: 0, battVolts: 0, solar: 0, satelites: 0, speed: 0, alt: 0, uptime: 0, rssi: 0, gpsFix: false, lat: 0, lon: 0 };
+  selectDev(id, false);
+  $('modal-cow').style.display = 'none';
+  $('mc-id').value = ''; $('mc-name').value = '';
+  toast('Coleira "' + nameOf(id) + '" adicionada.');
 });
 
-// atualiza estados (offline por tempo, "há X s") a cada segundo
+$('activate-all').addEventListener('click', function () {
+  var count = 0;
+  Object.keys(alarms).forEach(function (id) { if (alarms[id].muted) { alarms[id].muted = false; count++; } });
+  if (count) { renderAlarms(); toast(count + ' alarme(s) reativado(s).'); }
+  else toast('Nenhum alarme silenciado.');
+});
+
+$('save-map').addEventListener('click', function () {
+  var data = {
+    v: 1,
+    exported: new Date().toISOString(),
+    fences: fences,
+    tracks: tracks,
+    devices: Object.keys(devices).map(function (id) {
+      var d = devices[id];
+      return { id: id, nome: d.d && d.d.nome, lat: d.d && d.d.lat, lon: d.d && d.d.lon };
+    })
+  };
+  var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'wellbull_mapa_' + Date.now() + '.json';
+  a.click(); URL.revokeObjectURL(url);
+  toast('Mapa exportado com sucesso!');
+});
+
+$('load-map').addEventListener('click', function () { $('load-file').click(); });
+$('load-file').addEventListener('change', function (e) {
+  var file = e.target.files[0]; if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function (ev) {
+    try {
+      var data = JSON.parse(ev.target.result);
+      if (data.fences && Array.isArray(data.fences)) {
+        fences = data.fences.map(sanitizeFence).filter(Boolean);
+        lsSet('wellbull_fences', JSON.stringify({ v: 1, fences: fences }));
+        afterFencesChanged();
+      }
+      if (data.tracks) {
+        tracks = data.tracks; trackDirty = true; saveTracks(); renderTracks();
+      }
+      toast('Mapa carregado! ' + fences.length + ' cerca(s), ' + Object.keys(tracks).length + ' trajeto(s).');
+    } catch (err) { toast('Erro ao carregar: ' + err.message); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
 setInterval(function () { refreshMarkers(); renderList(); renderDetail(); renderAlarms(); evalAlerts(); }, 1000);
 $('id-input').value = selectedId;
 renderList(); renderDetail(); renderFences(); renderAlarms(); renderTracks();
 </script>
-</body></html>
+</body>
+</html>
